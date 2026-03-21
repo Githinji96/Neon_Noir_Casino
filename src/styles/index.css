@@ -1,0 +1,196 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── CSS Custom Properties ── */
+:root {
+  /* Background */
+  --color-bg-primary: #0a0a0f;
+  --color-bg-secondary: #0d0d1a;
+  --color-bg-purple: #12082a;
+  --color-bg-card: rgba(255, 255, 255, 0.04);
+
+  /* Accents */
+  --color-neon-yellow: #ffd700;
+  --color-electric-purple: #8b00ff;
+  --color-neon-cyan: #00ffff;
+  --color-neon-pink: #ff00ff;
+
+  /* Glow variants */
+  --glow-yellow: 0 0 10px #ffd700, 0 0 20px rgba(255, 215, 0, 0.5), 0 0 40px rgba(255, 215, 0, 0.25);
+  --glow-purple: 0 0 10px #8b00ff, 0 0 20px rgba(139, 0, 255, 0.5), 0 0 40px rgba(139, 0, 255, 0.25);
+  --glow-cyan: 0 0 10px #00ffff, 0 0 20px rgba(0, 255, 255, 0.5), 0 0 40px rgba(0, 255, 255, 0.25);
+
+  /* Glass */
+  --glass-bg: rgba(255, 255, 255, 0.05);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+
+  /* Typography */
+  --font-display: 'Orbitron', monospace;
+  --font-body: 'Inter', system-ui, sans-serif;
+
+  /* Transitions */
+  --transition-fast: 150ms ease;
+  --transition-normal: 250ms ease;
+  --transition-slow: 300ms ease;
+}
+
+/* ── Base Styles ── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-body);
+  background-color: var(--color-bg-primary);
+  color: #e2e8f0;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #0a0a0f 0%, #12082a 50%, #0d0d1a 100%);
+}
+
+/* ── Utility Classes ── */
+@layer components {
+  /* Glassmorphism card */
+  .glass-card {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  /* Neon text */
+  .text-neon-yellow {
+    color: var(--color-neon-yellow);
+    text-shadow: 0 0 8px rgba(255, 215, 0, 0.6);
+  }
+
+  .text-neon-cyan {
+    color: var(--color-neon-cyan);
+    text-shadow: 0 0 8px rgba(0, 255, 255, 0.6);
+  }
+
+  .text-neon-purple {
+    color: var(--color-electric-purple);
+    text-shadow: 0 0 8px rgba(139, 0, 255, 0.6);
+  }
+
+  /* Neon border glow */
+  .border-neon-yellow {
+    border-color: var(--color-neon-yellow);
+    box-shadow: var(--glow-yellow);
+  }
+
+  .border-neon-cyan {
+    border-color: var(--color-neon-cyan);
+    box-shadow: var(--glow-cyan);
+  }
+
+  /* Display font */
+  .font-display {
+    font-family: var(--font-display);
+  }
+
+  /* Shimmer loading effect */
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.03) 0%,
+      rgba(139, 0, 255, 0.08) 50%,
+      rgba(255, 255, 255, 0.03) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+
+  /* Neon border pulse — used on winning cells */
+  .neon-border-pulse {
+    animation: neonBorderPulse 1s ease-in-out infinite;
+  }
+
+  /* Hide scrollbar while keeping scroll functionality */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Neon button */
+  .btn-neon {
+    background-color: var(--color-neon-yellow);
+    color: #0a0a0f;
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    transition: box-shadow var(--transition-slow), transform var(--transition-normal);
+  }
+
+  .btn-neon:hover {
+    box-shadow: var(--glow-yellow);
+    transform: translateY(-1px);
+  }
+
+  .btn-neon:active {
+    transform: translateY(0);
+  }
+}
+
+/* ── Custom Keyframes ── */
+@keyframes neonBorderPulse {
+  0%, 100% {
+    box-shadow: 0 0 5px #ffd700, 0 0 10px rgba(255, 215, 0, 0.5);
+    border-color: #ffd700;
+  }
+  50% {
+    box-shadow: 0 0 20px #ffd700, 0 0 40px rgba(255, 215, 0, 0.6), 0 0 60px rgba(255, 215, 0, 0.3);
+    border-color: #ffe44d;
+  }
+}
+
+/* ── Scrollbar Styling ── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-electric-purple);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-neon-yellow);
+}
+
+/* ── Reduced Motion ── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
