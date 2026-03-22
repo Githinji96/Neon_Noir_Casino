@@ -8,7 +8,7 @@ import {
   playWinSound,
   playFreeSpinsTrigger,
 } from '../utils/audio';
-import { fetchTracks, playMusic, stopMusic } from '../utils/jamendo';
+import { fetchTracks, playMusic, pauseMusic, resumeMusic } from '../utils/jamendo';
 import Navbar from '../components/Navbar';
 import PaytableModal from '../components/PaytableModal';
 import FreeSpinsBanner from './SlotMachine/FreeSpinsBanner';
@@ -52,13 +52,13 @@ export default function SlotMachinePage({ onBack }: SlotMachinePageProps) {
       if (soundEnabled) playMusic(0.3);
     });
     return () => {
-      stopMusic(); // always stop when unmounting (navigating away)
+      pauseMusic(); // pause when leaving the slot page, keep tracks cached
     };
   }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Respond to sound toggle AFTER mount:
-  // - turning OFF → stop music entirely (not just mute)
-  // - turning ON  → start music if not already playing
+  // - turning OFF → pause music
+  // - turning ON  → resume/start music
   const isMountedRef = useRef(false);
   useEffect(() => {
     if (!isMountedRef.current) {
@@ -66,16 +66,14 @@ export default function SlotMachinePage({ onBack }: SlotMachinePageProps) {
       return;
     }
     if (soundEnabled) {
-      playMusic(0.3);
+      resumeMusic();
     } else {
-      stopMusic();
+      pauseMusic();
     }
   }, [soundEnabled]);
 
   const turboRef = useRef(turboMode);
   useEffect(() => { turboRef.current = turboMode; }, [turboMode]);
-
-  // Spin sound + reel stop ticks — fires exactly once per spin start
   useEffect(() => {
     if (!soundEnabled) return;
     if (isSpinning && !prevSpinning.current) {
@@ -115,16 +113,31 @@ export default function SlotMachinePage({ onBack }: SlotMachinePageProps) {
   // Spin animation timing: set isSpinning=false after animation completes
   useEffect(() => {
     if (!isSpinning) return;
-    const duration = turboMode ? 500 : 1400;
+    // Use ref to avoid stale closure on turboMode
+    const duration = turboRef.current ? 450 : 1600;
     const timer = setTimeout(() => setSpinning(false), duration);
     return () => clearTimeout(timer);
   }, [isSpinning]);
 
-  // Autoplay loop: trigger next spin 500ms after current spin ends
+  // Autoplay loop: trigger next spin after current spin ends.
+  // autoplayArmed ensures we don't fire immediately on toggle — only after
+  // a spin has actually completed while autoplay is active.
+  const autoplayArmed = useRef(false);
   useEffect(() => {
-    if (!autoplay || isSpinning) return;
-    const timer = setTimeout(() => spin(), 500);
-    return () => clearTimeout(timer);
+    if (!autoplay) {
+      autoplayArmed.current = false;
+      return;
+    }
+    // A spin just finished while autoplay is on → fire next spin
+    if (!isSpinning && autoplayArmed.current) {
+      const delay = turboRef.current ? 80 : 500;
+      const timer = setTimeout(() => spin(), delay);
+      return () => clearTimeout(timer);
+    }
+    // Spin started → arm for the next completion
+    if (isSpinning) {
+      autoplayArmed.current = true;
+    }
   }, [isSpinning, autoplay]);
 
   if (loading) {

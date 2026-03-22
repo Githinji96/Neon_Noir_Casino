@@ -1,6 +1,4 @@
 // Supabase Edge Function: M-Pesa STK Push
-// Deploy: supabase functions deploy mpesa-stk
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const DARAJA_BASE = Deno.env.get('MPESA_SANDBOX') === 'true'
@@ -12,6 +10,19 @@ const CONSUMER_SECRET = Deno.env.get('MPESA_CONSUMER_SECRET') ?? '';
 const SHORTCODE       = Deno.env.get('MPESA_SHORTCODE') ?? '';
 const PASSKEY         = Deno.env.get('MPESA_PASSKEY') ?? '';
 const CALLBACK_URL    = Deno.env.get('MPESA_CALLBACK_URL') ?? '';
+
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+
+function json(data: unknown, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...CORS, 'Content-Type': 'application/json' },
+  });
+}
 
 async function getAccessToken(): Promise<string> {
   const creds = btoa(`${CONSUMER_KEY}:${CONSUMER_SECRET}`);
@@ -29,25 +40,18 @@ function getTimestamp(): string {
 }
 
 Deno.serve(async (req) => {
-  // CORS preflight
   if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'authorization, content-type',
-      },
-    });
+    return new Response(null, { headers: CORS });
   }
 
   try {
     const { phone, amount, userId } = await req.json();
 
-    // Validate inputs
     if (!/^2547\d{8}$/.test(phone)) {
-      return Response.json({ error: 'Invalid phone. Use format 2547XXXXXXXX' }, { status: 400 });
+      return json({ error: 'Invalid phone. Use format 2547XXXXXXXX' }, 400);
     }
     if (!amount || amount < 10) {
-      return Response.json({ error: 'Minimum deposit is KES 10' }, { status: 400 });
+      return json({ error: 'Minimum deposit is KES 10' }, 400);
     }
 
     const timestamp = getTimestamp();
@@ -70,18 +74,17 @@ Deno.serve(async (req) => {
         PartyB: SHORTCODE,
         PhoneNumber: phone,
         CallBackURL: CALLBACK_URL,
-        AccountReference: 'NeonNoir',
-        TransactionDesc: 'Casino Deposit',
+        AccountReference: phone,
+        TransactionDesc: 'NeonNoir Casino Deposit',
       }),
     });
 
     const stkData = await stkRes.json();
 
     if (stkData.ResponseCode !== '0') {
-      return Response.json({ error: stkData.ResponseDescription ?? 'STK push failed' }, { status: 400 });
+      return json({ error: stkData.ResponseDescription ?? 'STK push failed' }, 400);
     }
 
-    // Save pending transaction to Supabase
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -95,12 +98,9 @@ Deno.serve(async (req) => {
       checkout_request_id: stkData.CheckoutRequestID,
     });
 
-    return Response.json(
-      { checkoutRequestId: stkData.CheckoutRequestID, message: 'STK push sent' },
-      { headers: { 'Access-Control-Allow-Origin': '*' } }
-    );
+    return json({ checkoutRequestId: stkData.CheckoutRequestID, message: 'STK push sent' });
   } catch (err) {
     console.error('[mpesa-stk]', err);
-    return Response.json({ error: 'Internal server error' }, { status: 500 });
+    return json({ error: String(err) }, 500);
   }
 });

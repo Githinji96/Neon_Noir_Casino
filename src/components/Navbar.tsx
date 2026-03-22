@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocation, Link, useNavigate } from 'react-router-dom';
 import { useGameStore } from '../store/gameStore';
 import { useAuthStore } from '../store/authStore';
+import { supabase } from '../lib/supabase';
 import LeaderboardModal from './LeaderboardModal';
 import DepositModal from './DepositModal';
 
@@ -23,12 +24,49 @@ export default function Navbar({ activeTab }: NavbarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
   const [depositOpen, setDepositOpen] = useState(false);
+  const [polling, setPolling] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const balance = useGameStore((state) => state.balance);
   const { user, profile, signOut } = useAuthStore();
 
-  const displayBalance = profile ? profile.balance : balance;
+  // gameStore.balance is the live source of truth (updated every spin).
+  // profile.balance is only used as the seed on first load via authStore.init.
+  const displayBalance = balance;
+
+  // Poll transaction after STK push
+  const handlePolling = (checkoutId: string) => {
+    if (!checkoutId) return;
+    setPolling(true);
+    let attempts = 0;
+    const MAX = 24;
+    const interval = setInterval(async () => {
+      attempts++;
+      const { data } = await supabase
+        .from('transactions')
+        .select('status')
+        .eq('checkout_request_id', checkoutId)
+        .single();
+
+      if (data?.status === 'success') {
+        clearInterval(interval);
+        setPolling(false);
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('balance')
+          .eq('id', user?.id)
+          .single();
+        if (prof) {
+          useAuthStore.setState((s) => ({
+            profile: s.profile ? { ...s.profile, balance: prof.balance } : null,
+          }));
+        }
+      } else if (data?.status === 'failed' || attempts >= MAX) {
+        clearInterval(interval);
+        setPolling(false);
+      }
+    }, 5000);
+  };
 
   const handleSignOut = async () => {
     await signOut();
@@ -80,9 +118,15 @@ export default function Navbar({ activeTab }: NavbarProps) {
 
             {/* Deposit Button */}
             <button
-              onClick={() => setDepositOpen(true)}
-              className="btn-neon px-4 py-1.5 rounded-full text-xs font-orbitron tracking-widest">
-              DEPOSIT
+              onClick={() => !polling && setDepositOpen(true)}
+              className="btn-neon px-4 py-1.5 rounded-full text-xs font-orbitron tracking-widest flex items-center gap-1.5"
+            >
+              {polling ? (
+                <>
+                  <span className="w-3 h-3 rounded-full border-2 border-black border-t-transparent animate-spin" />
+                  PENDING...
+                </>
+              ) : 'DEPOSIT'}
             </button>
 
             {/* Leaderboard */}
@@ -168,9 +212,14 @@ export default function Navbar({ activeTab }: NavbarProps) {
               {formatBalance(displayBalance)}
             </span>
             <button
-              onClick={() => setDepositOpen(true)}
-              className="btn-neon px-4 py-1.5 rounded-full text-xs font-orbitron tracking-widest">
-              DEPOSIT
+              onClick={() => !polling && setDepositOpen(true)}
+              className="btn-neon px-4 py-1.5 rounded-full text-xs font-orbitron tracking-widest flex items-center gap-1.5">
+              {polling ? (
+                <>
+                  <span className="w-3 h-3 rounded-full border-2 border-black border-t-transparent animate-spin" />
+                  PENDING...
+                </>
+              ) : 'DEPOSIT'}
             </button>
             <button aria-label="Leaderboard" onClick={() => setLeaderboardOpen(true)} className="text-gray-400 hover:text-neon-yellow transition-colors duration-250 text-xl">🏆</button>
             {user ? (
@@ -185,7 +234,7 @@ export default function Navbar({ activeTab }: NavbarProps) {
       )}
 
       <LeaderboardModal isOpen={leaderboardOpen} onClose={() => setLeaderboardOpen(false)} />
-      <DepositModal isOpen={depositOpen} onClose={() => setDepositOpen(false)} />
+      <DepositModal isOpen={depositOpen} onClose={() => setDepositOpen(false)} onPolling={handlePolling} />
     </nav>
   );
 }

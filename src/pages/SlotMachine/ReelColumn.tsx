@@ -19,18 +19,19 @@ export default function ReelColumn({
   turboMode,
 }: ReelColumnProps) {
   const controls = useAnimation();
-  const cycleDuration = turboMode ? 0.18 : 0.6;
+  const cycleDuration = turboMode ? 0.12 : 0.55;
+  const blurAmount = turboMode ? '4px' : '2px';
 
   useEffect(() => {
     if (isSpinning) {
       controls.start({
-        y: [0, -20, 0],
-        filter: ['blur(0px)', 'blur(2px)', 'blur(0px)'],
+        y: [0, -28, 0],
+        filter: [`blur(0px)`, `blur(${blurAmount})`, `blur(0px)`],
         transition: {
           duration: cycleDuration,
           repeat: Infinity,
           ease: 'linear',
-          delay: stopDelay / 1000,
+          delay: turboMode ? (stopDelay / 1000) * 0.4 : stopDelay / 1000,
         },
       });
     } else {
@@ -39,13 +40,13 @@ export default function ReelColumn({
         filter: 'blur(0px)',
         transition: {
           type: 'spring',
-          stiffness: 300,
-          damping: 15,
-          delay: stopDelay / 1000,
+          stiffness: turboMode ? 600 : 300,
+          damping: turboMode ? 25 : 15,
+          delay: turboMode ? (stopDelay / 1000) * 0.3 : stopDelay / 1000,
         },
       });
     }
-  }, [isSpinning, cycleDuration, stopDelay, controls]);
+  }, [isSpinning, cycleDuration, stopDelay, controls, blurAmount, turboMode]);
 
   return (
     <div className="flex flex-col gap-1 overflow-hidden rounded-xl bg-black/40 p-1 border border-white/5">

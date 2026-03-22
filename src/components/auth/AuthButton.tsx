@@ -20,7 +20,13 @@ export default function AuthButton({
       whileHover={!disabled && !loading ? { scale: 1.02 } : {}}
       whileTap={!disabled && !loading ? { scale: 0.98 } : {}}
       disabled={disabled || loading}
-      {...(props as object)}
+      type={props.type ?? 'button'}
+      onClick={props.onClick}
+      onSubmit={props.onSubmit}
+      form={props.form}
+      name={props.name}
+      value={props.value}
+      aria-label={props['aria-label']}
       className={`w-full py-3 rounded-xl font-orbitron text-sm font-bold tracking-widest transition-all duration-200 flex items-center justify-center gap-2
         ${isPrimary
           ? 'text-black disabled:opacity-50'

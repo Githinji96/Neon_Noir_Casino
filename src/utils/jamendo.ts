@@ -117,8 +117,22 @@ export function stopMusic(): void {
   audio.src = '';
   audio = null;
   isPlaying = false;
-  fetchPromise = null;
-  tracks = [];
+  // Keep fetchPromise and tracks so resuming doesn't require a full re-fetch
+}
+
+export function pauseMusic(): void {
+  if (audio && !audio.paused) audio.pause();
+  isPlaying = false;
+}
+
+export function resumeMusic(): void {
+  if (isPlaying) return;
+  if (audio && audio.paused && audio.src) {
+    isPlaying = true;
+    audio.play().catch(() => {});
+  } else {
+    playMusic(defaultVolume);
+  }
 }
 
 export function setMusicMuted(muted: boolean): void {
@@ -129,6 +143,24 @@ export function setMusicMuted(muted: boolean): void {
       audio.play().catch(() => {});
     }
   }
+}
+
+export function setMusicVolume(volume: number): void {
+  defaultVolume = Math.max(0, Math.min(1, volume));
+  if (audio) {
+    audio.volume = defaultVolume;
+    if (defaultVolume === 0 && !audio.paused) {
+      audio.pause();
+      isPlaying = false;
+    } else if (defaultVolume > 0 && audio.paused && audio.src) {
+      isPlaying = true;
+      audio.play().catch(() => {});
+    }
+  }
+}
+
+export function getMusicVolume(): number {
+  return defaultVolume;
 }
 
 export function skipTrack(): void {

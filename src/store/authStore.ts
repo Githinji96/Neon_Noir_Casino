@@ -33,6 +33,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           .eq('id', session.user.id)
           .single();
         set({ user: session.user, profile: data, loading: false });
+        // Seed game balance from Supabase profile so both displays match
+        if (data?.balance != null) {
+          const { useGameStore } = await import('./gameStore');
+          useGameStore.setState({ balance: data.balance });
+        }
       } else {
         set({ loading: false });
       }
@@ -56,6 +61,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           .eq('id', session.user.id)
           .single();
         set({ user: session.user, profile: data, loading: false });
+        if (data?.balance != null) {
+          const { useGameStore } = await import('./gameStore');
+          useGameStore.setState({ balance: data.balance });
+        }
       } catch {
         set({ user: session.user, profile: null, loading: false });
       }
@@ -72,8 +81,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   signIn: async (email, password) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    return error?.message ?? null;
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      return error?.message ?? null;
+    } catch (err) {
+      return err instanceof Error ? err.message : 'Network error. Please try again.';
+    }
   },
 
   signOut: async () => {
