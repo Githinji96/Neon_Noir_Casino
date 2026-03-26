@@ -13,7 +13,7 @@ const volatilityColor: Record<string, string> = {
 
 export default function PopularChoicesSection({ onGameClick }: PopularChoicesSectionProps) {
   return (
-    <section className="px-4 py-8">
+    <section className="px-6 md:px-10 py-8">
       {/* Title */}
       <div className="mb-6">
         <h2 className="font-orbitron text-2xl font-bold text-white tracking-widest uppercase">
@@ -23,7 +23,7 @@ export default function PopularChoicesSection({ onGameClick }: PopularChoicesSec
       </div>
 
       {/* Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
         {POPULAR_GAMES.map((game) => (
           <motion.button
             key={game.id}

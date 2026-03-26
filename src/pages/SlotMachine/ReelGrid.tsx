@@ -29,8 +29,8 @@ export default function ReelGrid({ reels, isSpinning, winResults, turboMode }: R
   return (
     <div
       className={[
-        'flex flex-row gap-2',
-        'bg-black/60 backdrop-blur rounded-2xl p-4',
+        'flex flex-row gap-1.5 sm:gap-2',
+        'bg-black/60 backdrop-blur rounded-2xl p-3 sm:p-4',
         'border',
         hasWins
           ? 'border-yellow-400/60 shadow-[0_0_20px_rgba(250,204,21,0.3)]'

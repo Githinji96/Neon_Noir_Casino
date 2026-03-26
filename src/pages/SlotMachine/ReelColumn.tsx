@@ -49,10 +49,10 @@ export default function ReelColumn({
   }, [isSpinning, cycleDuration, stopDelay, controls, blurAmount, turboMode]);
 
   return (
-    <div className="flex flex-col gap-1 overflow-hidden rounded-xl bg-black/40 p-1 border border-white/5">
+    <div className="flex flex-col gap-1.5 overflow-hidden rounded-xl bg-black/40 p-1.5 border border-white/5">
       <motion.div
         animate={controls}
-        className="flex flex-col gap-1"
+        className="flex flex-col gap-1.5"
       >
         {symbols.map((symbolId, rowIndex) => (
           <SymbolCell

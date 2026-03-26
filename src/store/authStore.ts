@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { supabase, type Profile } from '../lib/supabase';
 import type { User } from '@supabase/supabase-js';
+import { setAuthUserGetter } from './gameStore';
 
 interface AuthState {
   user: User | null;
@@ -24,6 +25,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   loading: true,
 
   init: async () => {
+    // Register auth user getter for jackpot store (avoids circular dep)
+    setAuthUserGetter(() => useAuthStore.getState().user?.id ?? null);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
@@ -72,18 +75,32 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   signUp: async (email, password, username) => {
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { username } },
-    });
-    return error?.message ?? null;
+    try {
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Request timed out. Check your connection or try again.')), 10000)
+      );
+      const signUpPromise = supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { username } },
+      });
+      const { error } = await Promise.race([signUpPromise, timeoutPromise]);
+      return error?.message ?? null;
+    } catch (err) {
+      return err instanceof Error ? err.message : 'Network error. Please try again.';
+    }
   },
 
   signIn: async (email, password) => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      return error?.message ?? null;
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Request timed out after 20s. Check your internet connection.')), 20000)
+      );
+      const signInPromise = supabase.auth.signInWithPassword({ email, password });
+      const { data, error } = await Promise.race([signInPromise, timeoutPromise]);
+      if (error) return error.message;
+      if (!data?.user) return 'Sign in failed. Please try again.';
+      return null;
     } catch (err) {
       return err instanceof Error ? err.message : 'Network error. Please try again.';
     }

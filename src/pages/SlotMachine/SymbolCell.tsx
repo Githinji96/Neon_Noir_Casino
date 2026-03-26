@@ -21,8 +21,8 @@ export default function SymbolCell({ symbolId, isWinning }: SymbolCellProps) {
 
   const baseClasses = [
     'relative flex items-center justify-center',
-    'w-full aspect-square',
-    'rounded-lg border',
+    'w-16 h-16 sm:w-20 sm:h-20',
+    'rounded-xl border',
     'bg-black/60',
     isPremium ? premiumBg : '',
     isWinning
@@ -39,14 +39,14 @@ export default function SymbolCell({ symbolId, isWinning }: SymbolCellProps) {
         animate={{ scale: [1, 1.1, 1], opacity: [1, 0.8, 1] }}
         transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
       >
-        <span className="text-3xl md:text-4xl select-none">{symbol.emoji}</span>
+        <span className="text-3xl sm:text-4xl select-none">{symbol.emoji}</span>
       </motion.div>
     );
   }
 
   return (
     <div className={baseClasses}>
-      <span className="text-3xl md:text-4xl select-none">{symbol.emoji}</span>
+      <span className="text-3xl sm:text-4xl select-none">{symbol.emoji}</span>
     </div>
   );
 }

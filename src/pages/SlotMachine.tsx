@@ -11,6 +11,9 @@ import {
 import { fetchTracks, playMusic, pauseMusic, resumeMusic } from '../utils/jamendo';
 import Navbar from '../components/Navbar';
 import PaytableModal from '../components/PaytableModal';
+import JackpotWinModal from '../components/JackpotWinModal';
+import JackpotWinToast from '../components/JackpotWinToast';
+import { useJackpotStore } from '../store/jackpotStore';
 import FreeSpinsBanner from './SlotMachine/FreeSpinsBanner';
 import WinDisplay from './SlotMachine/WinDisplay';
 import ReelGrid from './SlotMachine/ReelGrid';
@@ -24,7 +27,8 @@ interface SlotMachinePageProps {
 export default function SlotMachinePage({ onBack }: SlotMachinePageProps) {
   const [loading, setLoading] = useState(true);
   const location = useLocation();
-  const gameTitle = (location.state as { title?: string } | null)?.title ?? 'Cyber Strike 777';
+  const gameId    = (location.state as { id?: string; title?: string } | null)?.id ?? 'cyber-strike-777';
+  const gameTitle = (location.state as { id?: string; title?: string } | null)?.title ?? 'Cyber Strike 777';
 
   const reels = useGameStore((s) => s.reels);
   const isSpinning = useGameStore((s) => s.isSpinning);
@@ -39,8 +43,11 @@ export default function SlotMachinePage({ onBack }: SlotMachinePageProps) {
   const setSpinning = useGameStore((s) => s.setSpinning);
   const openPaytable = useGameStore((s) => s.openPaytable);
   const closePaytable = useGameStore((s) => s.closePaytable);
+  const setGame = useGameStore((s) => s.setGame);
 
   const { syncBalance, recordWin } = useAuthStore();
+  const pendingJackpotWin = useJackpotStore((s) => s.pendingWin);
+  const clearPendingWin = useJackpotStore((s) => s.clearPendingWin);
 
   const prevSpinning = useRef(false);
 
@@ -104,11 +111,12 @@ export default function SlotMachinePage({ onBack }: SlotMachinePageProps) {
     if (triggerFreeSpins && soundEnabled) playFreeSpinsTrigger();
   }, [triggerFreeSpins, soundEnabled]);
 
-  // 1-second loading state on mount
+  // 1-second loading state on mount — also sets the active game symbol set
   useEffect(() => {
+    setGame(gameId);
     const timer = setTimeout(() => setLoading(false), 1000);
     return () => clearTimeout(timer);
-  }, []);
+  }, [gameId]);
 
   // Spin animation timing: set isSpinning=false after animation completes
   useEffect(() => {
@@ -155,7 +163,7 @@ export default function SlotMachinePage({ onBack }: SlotMachinePageProps) {
     <div className="min-h-screen bg-gray-950">
       <Navbar />
 
-      <main className="max-w-2xl mx-auto px-4 py-6">
+      <main className="max-w-2xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
         {/* Back button */}
         <button
           onClick={onBack}
@@ -166,7 +174,7 @@ export default function SlotMachinePage({ onBack }: SlotMachinePageProps) {
 
         {/* Game title */}
         <h1
-          className="font-orbitron text-3xl font-bold text-yellow-300 tracking-widest text-center mb-6"
+          className="font-orbitron text-xl sm:text-3xl font-bold text-yellow-300 tracking-widest text-center mb-4 sm:mb-6"
           style={{ textShadow: '0 0 12px rgba(253,224,71,0.7)' }}
         >
           {gameTitle.toUpperCase()}
@@ -202,6 +210,10 @@ export default function SlotMachinePage({ onBack }: SlotMachinePageProps) {
       </main>
 
       <PaytableModal isOpen={isPaytableOpen} onClose={closePaytable} />
+      <JackpotWinToast />
+      {pendingJackpotWin && (
+        <JackpotWinModal win={pendingJackpotWin} onClose={clearPendingWin} />
+      )}
     </div>
   );
 }

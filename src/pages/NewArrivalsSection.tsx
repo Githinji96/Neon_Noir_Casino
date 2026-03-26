@@ -28,7 +28,7 @@ export default function NewArrivalsSection({ onGameClick }: NewArrivalsSectionPr
   }, []);
 
   return (
-    <section className="px-4 py-8">
+    <section className="px-6 md:px-10 py-8">
       {/* Title */}
       <div className="mb-6">
         <h2 className="font-orbitron text-2xl font-bold text-white tracking-widest uppercase">
@@ -38,7 +38,7 @@ export default function NewArrivalsSection({ onGameClick }: NewArrivalsSectionPr
       </div>
 
       {/* Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
         {loading
           ? GAME_LISTINGS.map((_, i) => <ShimmerCard key={i} />)
           : GAME_LISTINGS.map((game) => (

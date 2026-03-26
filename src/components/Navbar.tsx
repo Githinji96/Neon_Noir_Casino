@@ -34,12 +34,19 @@ export default function Navbar({ activeTab }: NavbarProps) {
   // profile.balance is only used as the seed on first load via authStore.init.
   const displayBalance = balance;
 
-  // Poll transaction after STK push
+  // Poll transaction after STK push — clears after 10s (2 attempts × 5s)
   const handlePolling = (checkoutId: string) => {
     if (!checkoutId) return;
     setPolling(true);
     let attempts = 0;
-    const MAX = 24;
+    const MAX = 2;
+
+    // Safety: always clear after 10s regardless of poll result
+    const safetyTimer = setTimeout(() => {
+      clearInterval(interval);
+      setPolling(false);
+    }, 10000);
+
     const interval = setInterval(async () => {
       attempts++;
       const { data } = await supabase
@@ -50,6 +57,7 @@ export default function Navbar({ activeTab }: NavbarProps) {
 
       if (data?.status === 'success') {
         clearInterval(interval);
+        clearTimeout(safetyTimer);
         setPolling(false);
         const { data: prof } = await supabase
           .from('profiles')
@@ -63,6 +71,7 @@ export default function Navbar({ activeTab }: NavbarProps) {
         }
       } else if (data?.status === 'failed' || attempts >= MAX) {
         clearInterval(interval);
+        clearTimeout(safetyTimer);
         setPolling(false);
       }
     }, 5000);
@@ -173,14 +182,20 @@ export default function Navbar({ activeTab }: NavbarProps) {
             </button>
           </div>
 
-          {/* Mobile Hamburger */}
-          <button
-            className="md:hidden text-gray-300 hover:text-neon-yellow transition-colors duration-250 text-2xl"
-            aria-label="Toggle menu"
-            onClick={() => setMobileMenuOpen((prev) => !prev)}
-          >
-            ☰
-          </button>
+          {/* Mobile: show balance + hamburger inline */}
+          <div className="flex md:hidden items-center gap-2">
+            <span className="font-orbitron text-xs text-neon-yellow font-bold tracking-wider"
+              style={{ textShadow: '0 0 8px rgba(255,215,0,0.4)' }}>
+              {formatBalance(displayBalance)}
+            </span>
+            <button
+              className="text-gray-300 hover:text-neon-yellow transition-colors duration-250 text-2xl"
+              aria-label="Toggle menu"
+              onClick={() => setMobileMenuOpen((prev) => !prev)}
+            >
+              ☰
+            </button>
+          </div>
         </div>
       </div>
 

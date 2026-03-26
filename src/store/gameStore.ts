@@ -1,10 +1,17 @@
 import { create } from 'zustand';
-import { type SpinGrid, generateSpin, checkJackpot } from '../logic/rng';
+import { type SpinGrid, generateSpin, setActiveGame } from '../logic/rng';
 import { type WinResult, evaluatePaylines } from '../logic/paylines';
 import { calculatePayout, calculateScatterPayout } from '../logic/payout';
-import { recordSpin, getWinBias, getSessionStats } from '../logic/rtpController';
+import { recordSpin, getSessionStats } from '../logic/rtpController';
 import { BET_LADDER, DEFAULT_BET } from '../config/betLadder';
 import { GAME_CONFIG } from '../config/gameConfig';
+import { getSymbolsForGame } from '../config/symbols';
+import { useJackpotStore } from './jackpotStore';
+import { supabase } from '../lib/supabase';
+
+// Lazy ref to authStore to avoid circular dependency
+let _getAuthUser: (() => string | null) | null = null;
+export function setAuthUserGetter(fn: () => string | null) { _getAuthUser = fn; }
 
 interface GameState {
   balance: number;
@@ -22,9 +29,11 @@ interface GameState {
   triggerFreeSpins: boolean;
   isJackpot: boolean;
   sessionRTP: number;
+  activeGameId: string;
 
   spin: () => void;
   setBet: (direction: 'up' | 'down') => void;
+  setGame: (gameId: string) => void;
   toggleAutoplay: () => void;
   toggleTurboMode: () => void;
   toggleSound: () => void;
@@ -51,6 +60,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   triggerFreeSpins: false,
   isJackpot: false,
   sessionRTP: 0,
+  activeGameId: 'cyber-strike-777',
 
   spin: () => {
     const state = get();
@@ -69,6 +79,23 @@ export const useGameStore = create<GameState>((set, get) => ({
       newFreeSpinsRemaining -= 1;
     }
 
+    // Contribute to progressive jackpots + check trigger via engine
+    let jackpotWinAmount = 0;
+    if (!isFreeSpins) {
+      const userId = _getAuthUser ? _getAuthUser() : null;
+      const stats = getSessionStats();
+      const jackpotWin = useJackpotStore.getState().processSpin({
+        betAmount: state.bet,
+        consecutiveLosses: stats.consecutiveLosses,
+        sessionRTP: stats.totalBet > 0 ? stats.totalPayout / stats.totalBet : 0,
+        totalSessionBet: stats.totalBet,
+        userId,
+      });
+      if (jackpotWin) {
+        jackpotWinAmount = jackpotWin.amount;
+      }
+    }
+
     // Generate grid + evaluate
     const grid = generateSpin();
     const { wins, scatterCount, triggerFreeSpins } = evaluatePaylines(grid);
@@ -76,13 +103,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     // Calculate payouts
     const linePayout = calculatePayout(wins, state.bet, isFreeSpins);
     const scatterPayout = calculateScatterPayout(scatterCount, state.bet);
-    let totalPayout = linePayout + scatterPayout;
-
-    // Jackpot check
-    const jackpot = !isFreeSpins && checkJackpot(getWinBias());
-    if (jackpot) {
-      totalPayout += state.bet * 5000;
-    }
+    let totalPayout = linePayout + scatterPayout + jackpotWinAmount;
 
     newBalance = Math.round((newBalance + totalPayout) * 100) / 100;
 
@@ -102,6 +123,22 @@ export const useGameStore = create<GameState>((set, get) => ({
     // Record to RTP controller (only real bets, not free spins)
     if (!isFreeSpins) {
       recordSpin(state.bet, totalPayout);
+
+      // Fire-and-forget: persist spin to Supabase for real GGR/RTP analytics
+      const userId = _getAuthUser ? _getAuthUser() : null;
+      if (userId) {
+        supabase.from('spins').insert({
+          user_id: userId,
+          game_id: state.activeGameId,
+          bet: state.bet,
+          payout: totalPayout,
+          is_free_spin: false,
+        }).then(({ error }) => {
+          if (error && import.meta.env.DEV) {
+            console.warn('[gameStore] spin insert failed:', error.message);
+          }
+        });
+      }
     }
 
     const stats = getSessionStats();
@@ -113,7 +150,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       console.log('[Spin]', {
         wins: wins.length,
         totalPayout,
-        jackpot,
+        jackpotWin: jackpotWinAmount > 0,
         scatterCount,
         sessionRTP: `${stats.currentRTP}%`,
         consecutiveLosses: stats.consecutiveLosses,
@@ -130,7 +167,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       freeSpinsTotalWin: finalFreeSpinsTotalWin,
       triggerFreeSpins,
       autoplay: newAutoplay,
-      isJackpot: jackpot,
+      isJackpot: jackpotWinAmount > 0,
       sessionRTP: stats.currentRTP,
     });
   },
@@ -154,4 +191,11 @@ export const useGameStore = create<GameState>((set, get) => ({
   setSpinning: (value: boolean) => set({ isSpinning: value }),
   clearWinResults: () => set({ winResults: [] }),
   endFreeSpins: () => set({ freeSpinsRemaining: 0, freeSpinsTotalWin: 0 }),
+  setGame: (gameId: string) => {
+    setActiveGame(gameId);
+    const syms = getSymbolsForGame(gameId);
+    const firstSym = syms[0]?.id ?? 'cherry';
+    const idleGrid = Array.from({ length: 5 }, () => Array(3).fill(firstSym)) as SpinGrid;
+    set({ activeGameId: gameId, winResults: [], isSpinning: false, autoplay: false, reels: idleGrid });
+  },
 }));

@@ -26,7 +26,7 @@ export default function BettingControls() {
           −
         </button>
 
-        <span className="text-2xl font-orbitron text-neon-yellow font-bold min-w-[100px] text-center">
+        <span className="text-xl sm:text-2xl font-orbitron text-neon-yellow font-bold min-w-[80px] sm:min-w-[100px] text-center">
           ${bet.toFixed(2)}
         </span>
 

@@ -121,3 +121,53 @@ create policy "Users read own transactions"
 create policy "Service role manages transactions"
   on public.transactions for all
   using (auth.role() = 'service_role');
+
+-- ============================================================
+-- PROGRESSIVE JACKPOTS
+-- ============================================================
+create table if not exists public.jackpots (
+  id                  text primary key,
+  name                text not null,
+  type                text not null default 'daily', -- mega | daily | hourly | weekly
+  base_amount         numeric(14, 2) not null,
+  current_amount      numeric(14, 2) not null,
+  contribution_rate   numeric(5, 4) not null default 0.02,
+  last_reset          timestamptz default now()
+);
+
+create table if not exists public.jackpot_wins (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid references public.profiles(id) on delete set null,
+  jackpot_id  text references public.jackpots(id),
+  amount      numeric(14, 2) not null,
+  created_at  timestamptz default now()
+);
+
+alter table public.jackpots enable row level security;
+alter table public.jackpot_wins enable row level security;
+
+drop policy if exists "Anyone can read jackpots" on public.jackpots;
+create policy "Anyone can read jackpots"
+  on public.jackpots for select using (true);
+
+drop policy if exists "Service role manages jackpots" on public.jackpots;
+create policy "Service role manages jackpots"
+  on public.jackpots for all using (auth.role() = 'service_role');
+
+drop policy if exists "Anyone can read jackpot wins" on public.jackpot_wins;
+create policy "Anyone can read jackpot wins"
+  on public.jackpot_wins for select using (true);
+
+drop policy if exists "Service role manages jackpot wins" on public.jackpot_wins;
+create policy "Service role manages jackpot wins"
+  on public.jackpot_wins for all using (auth.role() = 'service_role');
+
+-- Seed initial jackpot data
+insert into public.jackpots (id, name, type, base_amount, current_amount, contribution_rate)
+values
+  ('mega-moolah-noir', 'Mega Moolah Noir', 'mega',   3000000.00, 3429102.55, 0.05),
+  ('electric-pulse',   'Electric Pulse',   'hourly',  100000.00, 1253671.36, 0.03),
+  ('crystal-vault',    'Crystal Vault',    'daily',   500000.00,  879129.61, 0.02),
+  ('shadow-fortune',   'Shadow Fortune',   'weekly',  200000.00,  515125.45, 0.04),
+  ('neon-nexus',       'Neon Nexus',       'hourly',   50000.00,  253709.99, 0.01)
+on conflict (id) do nothing;

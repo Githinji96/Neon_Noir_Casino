@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import AuthCard from '../../components/auth/AuthCard';
 import InputField from '../../components/auth/InputField';
 import PasswordField from '../../components/auth/PasswordField';
@@ -12,9 +12,13 @@ import { useAuthStore } from '../../store/authStore';
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { signIn } = useAuthStore();
   const [serverError, setServerError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Where to go after successful login — default to home
+  const from = (location.state as { from?: { pathname: string; state?: unknown } } | null)?.from;
 
   const { register, handleSubmit, watch, formState: { errors } } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -30,7 +34,12 @@ export default function LoginPage() {
     if (err) {
       setServerError(err);
     } else {
-      navigate('/');
+      // Navigate back to where the user was trying to go, preserving state
+      if (from) {
+        navigate(from.pathname, { state: from.state, replace: true });
+      } else {
+        navigate('/');
+      }
     }
   };
 

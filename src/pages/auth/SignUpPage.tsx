@@ -28,7 +28,6 @@ export default function SignUpPage() {
 
   const onSubmit = async (data: SignUpFormData) => {
     setServerError('');
-    setSuccessMsg('');
     setLoading(true);
     const err = await signUp(data.email, data.password, data.username);
     setLoading(false);

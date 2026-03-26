@@ -26,12 +26,21 @@ function json(data: unknown, status = 200) {
 
 async function getAccessToken(): Promise<string> {
   const creds = btoa(`${CONSUMER_KEY}:${CONSUMER_SECRET}`);
+  
+  if (!CONSUMER_KEY || !CONSUMER_SECRET) {
+    throw new Error('M-Pesa credentials not configured. Set MPESA_CONSUMER_KEY and MPESA_CONSUMER_SECRET in Supabase Edge Function secrets.');
+  }
+  
   const res = await fetch(
     `${DARAJA_BASE}/oauth/v1/generate?grant_type=client_credentials`,
     { headers: { Authorization: `Basic ${creds}` } }
   );
-  if (!res.ok) throw new Error(`Token fetch failed: ${res.status}`);
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Token fetch failed (${res.status}): ${body}`);
+  }
   const data = await res.json();
+  if (!data.access_token) throw new Error('No access_token in response: ' + JSON.stringify(data));
   return data.access_token;
 }
 
@@ -47,16 +56,39 @@ Deno.serve(async (req) => {
   try {
     const { phone, amount, userId } = await req.json();
 
+    console.log('[mpesa-stk] Request:', { phone, amount, userId });
+
     if (!/^2547\d{8}$/.test(phone)) {
+      console.error('[mpesa-stk] Invalid phone format:', phone);
       return json({ error: 'Invalid phone. Use format 2547XXXXXXXX' }, 400);
     }
     if (!amount || amount < 10) {
+      console.error('[mpesa-stk] Invalid amount:', amount);
       return json({ error: 'Minimum deposit is KES 10' }, 400);
     }
 
     const timestamp = getTimestamp();
     const password  = btoa(`${SHORTCODE}${PASSKEY}${timestamp}`);
+    
+    console.log('[mpesa-stk] Getting access token...');
     const token     = await getAccessToken();
+    console.log('[mpesa-stk] Token obtained');
+
+    const stkPayload = {
+      BusinessShortCode: SHORTCODE,
+      Password: password,
+      Timestamp: timestamp,
+      TransactionType: 'CustomerPayBillOnline',
+      Amount: Math.floor(amount),
+      PartyA: phone,
+      PartyB: SHORTCODE,
+      PhoneNumber: phone,
+      CallBackURL: CALLBACK_URL,
+      AccountReference: phone,
+      TransactionDesc: 'NeonNoir Casino Deposit',
+    };
+
+    console.log('[mpesa-stk] Sending STK push:', { phone, amount: Math.floor(amount), shortcode: SHORTCODE });
 
     const stkRes = await fetch(`${DARAJA_BASE}/mpesa/stkpush/v1/processrequest`, {
       method: 'POST',
@@ -64,24 +96,14 @@ Deno.serve(async (req) => {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        BusinessShortCode: SHORTCODE,
-        Password: password,
-        Timestamp: timestamp,
-        TransactionType: 'CustomerPayBillOnline',
-        Amount: Math.floor(amount),
-        PartyA: phone,
-        PartyB: SHORTCODE,
-        PhoneNumber: phone,
-        CallBackURL: CALLBACK_URL,
-        AccountReference: phone,
-        TransactionDesc: 'NeonNoir Casino Deposit',
-      }),
+      body: JSON.stringify(stkPayload),
     });
 
     const stkData = await stkRes.json();
+    console.log('[mpesa-stk] STK response:', stkData);
 
     if (stkData.ResponseCode !== '0') {
+      console.error('[mpesa-stk] STK push failed:', stkData);
       return json({ error: stkData.ResponseDescription ?? 'STK push failed' }, 400);
     }
 
