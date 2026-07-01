@@ -73,7 +73,7 @@ export default function TableCard({ table, onJoin }: TableCardProps) {
         {/* Bet range */}
         <div className="text-right">
           <p className="text-gray-500 text-[10px]">BET RANGE</p>
-          <p className="text-white font-semibold">${table.minBet} – ${table.maxBet.toLocaleString()}</p>
+        <span className="text-white font-semibold">KES {table.minBet} – KES {table.maxBet.toLocaleString()}</span>
         </div>
       </div>
 

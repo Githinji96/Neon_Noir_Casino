@@ -20,9 +20,10 @@ export function getAdjustedWeights(winBias: number, symbols: Symbol[] = SYMBOLS)
     let weight = sym.weight * volMod;
 
     if (sym.multiplier >= 4 || sym.id === 'wild' || sym.id === 'scatter') {
-      weight *= winBias;
+      // High-value symbols: bias influence is dampened (sqrt) to prevent explosive win rates
+      weight *= 0.5 + Math.sqrt(winBias) * 0.5;
     } else if (sym.multiplier >= 2) {
-      weight *= 0.5 + winBias * 0.5;
+      weight *= 0.6 + winBias * 0.4;
     }
 
     return { id: sym.id, weight: Math.max(0.1, weight) };

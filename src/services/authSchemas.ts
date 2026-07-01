@@ -19,11 +19,16 @@ export const signUpSchema = z.object({
     .max(20, 'Max 20 characters')
     .regex(/^[a-zA-Z0-9_]+$/, 'Only letters, numbers, underscores'),
   email: z.string().min(1, 'Email is required').email('Invalid email address'),
+  phone: z
+    .string()
+    .regex(/^(?:0|254|\+254)?7\d{8}$/, 'Enter a valid Kenyan number e.g. 0712345678')
+    .optional()
+    .or(z.literal('')),
   password: passwordRules,
   confirmPassword: z.string().min(1, 'Please confirm your password'),
   country: z.string().optional(),
   currency: z.string().optional(),
-  terms: z.literal(true, { errorMap: () => ({ message: 'You must accept the terms' }) }),
+  terms: z.boolean().refine((value) => value === true, { message: 'You must accept the terms' }),
 }).refine((d) => d.password === d.confirmPassword, {
   message: 'Passwords do not match',
   path: ['confirmPassword'],

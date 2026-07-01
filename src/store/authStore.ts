@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { supabase, type Profile } from '../lib/supabase';
+import { getAuthErrorMessage, isTransientAuthError, supabase, type Profile } from '../lib/supabase';
 import type { User } from '@supabase/supabase-js';
 import { setAuthUserGetter } from './gameStore';
 
@@ -8,8 +8,9 @@ interface AuthState {
   profile: Profile | null;
   loading: boolean;
   init: () => Promise<void>;
-  signUp: (email: string, password: string, username: string) => Promise<string | null>;
+  signUp: (email: string, password: string, username: string, phone?: string) => Promise<string | null>;
   signIn: (email: string, password: string) => Promise<string | null>;
+  signInWithOAuth: (provider: 'google' | 'apple') => Promise<string | null>;
   signOut: () => Promise<void>;
   syncBalance: (balance: number) => Promise<void>;
   recordWin: (winAmount: number, gameTitle: string) => Promise<void>;
@@ -57,24 +58,31 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         set({ user: null, profile: null, loading: false });
         return;
       }
+      // Always unblock loading immediately, then fetch profile
+      set({ user: session.user, loading: false });
       try {
-        const { data } = await supabase
+        const profilePromise = supabase
           .from('profiles')
           .select('*')
           .eq('id', session.user.id)
           .single();
-        set({ user: session.user, profile: data, loading: false });
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('profile timeout')), 5000)
+        );
+        const { data } = await Promise.race([profilePromise, timeoutPromise]);
+        set({ profile: data });
         if (data?.balance != null) {
           const { useGameStore } = await import('./gameStore');
           useGameStore.setState({ balance: data.balance });
         }
       } catch {
-        set({ user: session.user, profile: null, loading: false });
+        // Profile fetch failed — user is still signed in, just no profile data
+        set({ profile: null });
       }
     });
   },
 
-  signUp: async (email, password, username) => {
+  signUp: async (email, password, username, phone?) => {
     try {
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('Request timed out. Check your connection or try again.')), 10000)
@@ -82,35 +90,57 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const signUpPromise = supabase.auth.signUp({
         email,
         password,
-        options: { data: { username } },
+        options: { data: { username, phone: phone ?? '' } },
       });
       const { error } = await Promise.race([signUpPromise, timeoutPromise]);
       return error?.message ?? null;
     } catch (err) {
-      return err instanceof Error ? err.message : 'Network error. Please try again.';
+      return getAuthErrorMessage(err, 'We could not create your account right now. Please try again.');
     }
   },
 
   signIn: async (email, password) => {
     try {
       const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Request timed out after 20s. Check your internet connection.')), 20000)
+        setTimeout(() => reject(new Error('Request timed out. Check your connection and try again.')), 10000)
       );
-      const signInPromise = supabase.auth.signInWithPassword({ email, password });
-      const { data, error } = await Promise.race([signInPromise, timeoutPromise]);
-      if (error) return error.message;
-      if (!data?.user) return 'Sign in failed. Please try again.';
-      return null;
+
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          const { data, error } = await Promise.race([supabase.auth.signInWithPassword({ email, password }), timeoutPromise]);
+          if (error) return error.message;
+          if (!data?.user) return 'Sign in failed. Please try again.';
+          return null;
+        } catch (err) {
+          if (attempt === 0 && isTransientAuthError(err)) {
+            continue;
+          }
+          return getAuthErrorMessage(err);
+        }
+      }
+
+      return 'The authentication service could not be reached. Please check your connection and try again.';
     } catch (err) {
-      return err instanceof Error ? err.message : 'Network error. Please try again.';
+      return getAuthErrorMessage(err);
     }
   },
 
   signOut: async () => {
-    // Clear local state first so the UI unblocks immediately,
-    // then tell Supabase to invalidate the server-side session.
     set({ user: null, profile: null });
     await supabase.auth.signOut();
+  },
+
+  signInWithOAuth: async (provider) => {
+    try {
+      const redirectTo = `${window.location.origin}/auth/callback`;
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: { redirectTo },
+      });
+      return error?.message ?? null;
+    } catch (err) {
+      return err instanceof Error ? err.message : 'OAuth sign-in failed.';
+    }
   },
 
   syncBalance: async (balance) => {

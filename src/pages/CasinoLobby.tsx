@@ -10,7 +10,7 @@ import JackpotWinToast from '../components/JackpotWinToast';
 import { useJackpotStore } from '../store/jackpotStore';
 
 interface CasinoLobbyProps {
-  onNavigateToSlot: (id?: string, title?: string) => void;
+  onNavigateToSlot: (id?: string, title?: string, jackpotMode?: boolean) => void;
 }
 
 export default function CasinoLobby({ onNavigateToSlot }: CasinoLobbyProps) {
@@ -28,14 +28,14 @@ export default function CasinoLobby({ onNavigateToSlot }: CasinoLobbyProps) {
       <Navbar />
       <JackpotWinToast />
 
-      <main className="bg-gradient-to-b from-casino-dark to-black min-h-screen pb-24 md:pb-0">
+      <main className="bg-gradient-to-b from-casino-dark to-black pb-24 md:pb-0">
         <HeroSection onPlayNow={() => onNavigateToSlot()} />
 
         <NewArrivalsSection onGameClick={onNavigateToSlot} />
         <PopularChoicesSection onGameClick={onNavigateToSlot} />
 
         {/* Full-width so the scroll row isn't clipped by the max-width container */}
-        <ProgressiveJackpotsSection onSpinNow={(id, title) => onNavigateToSlot(id, title)} />
+        <ProgressiveJackpotsSection onSpinNow={(id, title) => onNavigateToSlot(id, title, true)} />
       </main>
 
       <BottomNav

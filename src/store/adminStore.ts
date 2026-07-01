@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
+import { hasRequiredAdminRole } from '../components/admin/adminAccess';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -17,6 +18,7 @@ export type AuditActionType =
   | 'user_ban'
   | 'password_reset'
   | 'withdrawal_approve'
+  | 'withdrawal_complete'
   | 'withdrawal_reject'
   | 'payment_retry'
   | 'game_toggle'
@@ -149,8 +151,8 @@ export const useAdminStore = create<AdminState>((set) => ({
         return;
       }
 
-      if (!profile.admin_role) {
-        console.warn('[adminStore.init] profile has no admin_role:', profile);
+      if (!profile.admin_role || !hasRequiredAdminRole(['super_admin', 'finance_admin', 'support_agent', 'game_manager'], profile.admin_role as AdminRole)) {
+        console.warn('[adminStore.init] profile has no valid admin_role:', profile);
         set({ adminProfile: null, loading: false });
         return;
       }

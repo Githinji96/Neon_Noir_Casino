@@ -43,9 +43,9 @@ CREATE POLICY "Users can view own profile"
   ON public.profiles FOR SELECT
   USING (auth.uid() = id);
 
--- Helper function: returns true if the calling user has an admin role
+-- Helper function: returns true if the calling user has any known admin role
 -- Uses SECURITY DEFINER so it bypasses RLS when checking the caller's own row
-CREATE OR REPLACE FUNCTION public.is_admin()
+CREATE OR REPLACE FUNCTION public.has_any_admin_role(roles text[])
 RETURNS boolean
 LANGUAGE sql
 SECURITY DEFINER
@@ -53,8 +53,17 @@ STABLE
 AS $$
   SELECT EXISTS (
     SELECT 1 FROM public.profiles
-    WHERE id = auth.uid() AND admin_role IS NOT NULL
+    WHERE id = auth.uid() AND admin_role = ANY(roles)
   );
+$$;
+
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+AS $$
+  SELECT public.has_any_admin_role(ARRAY['super_admin','finance_admin','support_agent','game_manager']);
 $$;
 
 -- Admins can read ALL profiles (uses the helper to avoid circular RLS)
@@ -67,17 +76,14 @@ CREATE POLICY "Admins can read all profiles"
 DROP POLICY IF EXISTS "Admins can update all profiles" ON public.profiles;
 CREATE POLICY "Admins can update all profiles"
   ON public.profiles FOR UPDATE
-  USING (public.is_admin());
+  USING (public.has_any_admin_role(ARRAY['super_admin','finance_admin']));
 
 -- Admins can read all transactions
 DROP POLICY IF EXISTS "Admins can read all transactions" ON public.transactions;
 CREATE POLICY "Admins can read all transactions"
   ON public.transactions FOR SELECT
   USING (
-    EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE id = auth.uid() AND admin_role IS NOT NULL
-    )
+    public.has_any_admin_role(ARRAY['super_admin','finance_admin','support_agent','game_manager'])
   );
 
 -- Admins can read all leaderboard entries
@@ -85,10 +91,7 @@ DROP POLICY IF EXISTS "Admins can read all leaderboard" ON public.leaderboard;
 CREATE POLICY "Admins can read all leaderboard"
   ON public.leaderboard FOR SELECT
   USING (
-    EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE id = auth.uid() AND admin_role IS NOT NULL
-    )
+    public.has_any_admin_role(ARRAY['super_admin','finance_admin','support_agent','game_manager'])
   );
 
 -- ============================================================
@@ -113,20 +116,14 @@ DROP POLICY IF EXISTS "Admins can insert audit logs" ON public.admin_audit_logs;
 CREATE POLICY "Admins can insert audit logs"
   ON public.admin_audit_logs FOR INSERT
   WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE id = auth.uid() AND admin_role IS NOT NULL
-    )
+    public.has_any_admin_role(ARRAY['super_admin','finance_admin','support_agent','game_manager'])
   );
 
 DROP POLICY IF EXISTS "Admins can read audit logs" ON public.admin_audit_logs;
 CREATE POLICY "Admins can read audit logs"
   ON public.admin_audit_logs FOR SELECT
   USING (
-    EXISTS (
-      SELECT 1 FROM public.profiles
-      WHERE id = auth.uid() AND admin_role = 'super_admin'
-    )
+    public.has_any_admin_role(ARRAY['super_admin'])
   );
 
 -- NO UPDATE or DELETE policies - immutability enforced at DB level

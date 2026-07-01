@@ -119,7 +119,7 @@ export default function AnalyticsPage() {
 
   // Raw data from Supabase
   const [transactions, setTransactions] = useState<{ amount: number; status: string; created_at: string }[]>([]);
-  const [profiles, setProfiles] = useState<{ id: string; updated_at: string }[]>([]);
+  const [profiles, setProfiles] = useState<{ id: string; created_at: string }[]>([]);
   const [leaderboard, setLeaderboard] = useState<{ win_amount: number; game_title: string; created_at: string }[]>([]);
   const [jackpots, setJackpots] = useState<{ id: string; name: string; type: string; current_amount: number }[]>([]);
   const [spins, setSpins] = useState<{ bet: number; payout: number; game_id: string; created_at: string }[]>([]);
@@ -168,7 +168,10 @@ export default function AnalyticsPage() {
       ]);
 
       setTransactions(txRes.data ?? []);
-      setProfiles(profRes.data ?? []);
+      setProfiles((profRes.data ?? []).map((row: any) => ({
+        ...row,
+        created_at: row.updated_at ?? row.created_at ?? new Date().toISOString(),
+      })));
       setLeaderboard(lbRes.data ?? []);
       setJackpots(jpRes.data ?? []);
       setSpins(spinsRes.data ?? []);
@@ -203,7 +206,6 @@ export default function AnalyticsPage() {
   const totalHandle = spins.reduce((a, s) => a + s.bet, 0);
   const totalSpinPayouts = spins.reduce((a, s) => a + s.payout, 0);
   const totalGGR = Math.max(0, Math.round((totalHandle - totalSpinPayouts) * 100) / 100);
-  const totalPayouts = leaderboard.reduce((a, r) => a + r.win_amount, 0);
 
   // ─── RTP data — real: total_payout / total_bet per day ─────────────────────
   const rtpData = useMemo(() => {

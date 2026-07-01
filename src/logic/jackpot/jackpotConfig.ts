@@ -15,23 +15,24 @@ export interface JackpotConfig {
 
   // Amounts
   baseAmount: number;
-  seedAmount: number;       // starting value after reset
-  maxAmount: number;        // hard cap — prevents runaway growth
-  partialResetPct: number;  // mega only: retains this % of prev value on reset (0 = full reset)
+  seedAmount: number;
+  maxAmount: number;
+  partialResetPct: number;
+  minimumThreshold: number;  // pool must reach this before jackpot can trigger
 
   // Contribution
-  contributionRate: number; // fraction of bet added per spin
-  maxContributionPerSpin: number; // cap to prevent abuse on huge bets
+  contributionRate: number;
+  maxContributionPerSpin: number;
 
   // Trigger probability
   baseProbability: number;
-  minProbability: number;   // floor — never goes below this
-  maxProbability: number;   // ceiling — never goes above this
+  minProbability: number;
+  maxProbability: number;
 
-  // Cooldown after win (ms) — no trigger during this window
+  // Cooldown after win (ms)
   cooldownMs: number;
 
-  // Reset interval (ms) — Infinity = never auto-reset
+  // Reset interval (ms)
   resetIntervalMs: number;
 }
 
@@ -50,7 +51,8 @@ export const JACKPOT_CONFIGS: JackpotConfig[] = [
     baseAmount: 3_000_000,
     seedAmount: 3_000_000,
     maxAmount: 50_000_000,
-    partialResetPct: 0.10, // retains 10% of won amount after reset
+    partialResetPct: 0.10,
+    minimumThreshold: 5_000_000,  // must reach 5M before triggering
     contributionRate: 0.02,
     maxContributionPerSpin: 500,
     baseProbability: 0.0001,
@@ -70,12 +72,13 @@ export const JACKPOT_CONFIGS: JackpotConfig[] = [
     seedAmount: 100_000,
     maxAmount: 2_000_000,
     partialResetPct: 0,
+    minimumThreshold: 500_000,
     contributionRate: 0.01,
     maxContributionPerSpin: 100,
-    baseProbability: 0.005,
-    minProbability: 0.002,
-    maxProbability: 0.02,
-    cooldownMs: 5 * 60 * 1000,
+    baseProbability: 0.0002,    // 1 in 5,000 spins
+    minProbability: 0.0001,
+    maxProbability: 0.0008,
+    cooldownMs: 30 * 60 * 1000, // 30 min cooldown
     resetIntervalMs: 60 * 60 * 1000,
   },
   {
@@ -89,12 +92,13 @@ export const JACKPOT_CONFIGS: JackpotConfig[] = [
     seedAmount: 500_000,
     maxAmount: 10_000_000,
     partialResetPct: 0,
+    minimumThreshold: 2_000_000,
     contributionRate: 0.015,
     maxContributionPerSpin: 200,
-    baseProbability: 0.001,
-    minProbability: 0.0005,
-    maxProbability: 0.005,
-    cooldownMs: 15 * 60 * 1000,
+    baseProbability: 0.0001,    // 1 in 10,000 spins
+    minProbability: 0.00005,
+    maxProbability: 0.0005,
+    cooldownMs: 60 * 60 * 1000, // 1 hour cooldown
     resetIntervalMs: 24 * 60 * 60 * 1000,
   },
   {
@@ -108,12 +112,13 @@ export const JACKPOT_CONFIGS: JackpotConfig[] = [
     seedAmount: 200_000,
     maxAmount: 5_000_000,
     partialResetPct: 0,
+    minimumThreshold: 1_000_000,
     contributionRate: 0.005,
     maxContributionPerSpin: 150,
-    baseProbability: 0.0005,
-    minProbability: 0.0002,
-    maxProbability: 0.003,
-    cooldownMs: 30 * 60 * 1000,
+    baseProbability: 0.00005,   // 1 in 20,000 spins
+    minProbability: 0.00002,
+    maxProbability: 0.0002,
+    cooldownMs: 2 * 60 * 60 * 1000, // 2 hour cooldown
     resetIntervalMs: 7 * 24 * 60 * 60 * 1000,
   },
   {
@@ -127,12 +132,13 @@ export const JACKPOT_CONFIGS: JackpotConfig[] = [
     seedAmount: 50_000,
     maxAmount: 1_000_000,
     partialResetPct: 0,
+    minimumThreshold: 200_000,
     contributionRate: 0.005,
     maxContributionPerSpin: 50,
-    baseProbability: 0.008,
-    minProbability: 0.003,
-    maxProbability: 0.03,
-    cooldownMs: 3 * 60 * 1000,
+    baseProbability: 0.0003,    // 1 in 3,333 spins (was 1 in 125 — way too high)
+    minProbability: 0.0001,
+    maxProbability: 0.001,
+    cooldownMs: 20 * 60 * 1000, // 20 min cooldown
     resetIntervalMs: 60 * 60 * 1000,
   },
 ];

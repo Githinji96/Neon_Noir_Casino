@@ -33,31 +33,29 @@ export function computeTriggerProbability(
     return 0;
   }
 
-  // 2. Overgrowth boost — jackpot grown > 3× base → nudge probability up
+  // 2. Overgrowth boost — only modest nudge, capped by maxProbability
   const growthRatio = ctx.currentAmount / cfg.baseAmount;
-  if (growthRatio > 5) {
-    p *= 2.0;
-  } else if (growthRatio > 3) {
+  if (growthRatio > 10) {
     p *= 1.5;
-  } else if (growthRatio > 2) {
+  } else if (growthRatio > 5) {
     p *= 1.2;
+  } else if (growthRatio > 3) {
+    p *= 1.1;
   }
 
-  // 3. RTP balancing — if session RTP is below jackpot share target, boost
-  if (ctx.totalSessionBet > 500) {
+  // 3. RTP balancing — suppress if over-paying, small boost if under
+  if (ctx.totalSessionBet > 1000) {
     const jackpotRTPTarget = RTP_TARGET * JACKPOT_RTP_SHARE;
     const rtpDiff = jackpotRTPTarget - ctx.sessionRTP;
-    if (rtpDiff > 0.01) {
-      p *= 1.3; // under-paying → boost
+    if (rtpDiff > 0.02) {
+      p *= 1.15; // under-paying → small boost
     } else if (rtpDiff < -0.01) {
-      p *= 0.7; // over-paying → suppress
+      p *= 0.6;  // over-paying → suppress harder
     }
   }
 
-  // 4. Losing streak soft compensation
-  if (ctx.consecutiveLosses >= 20) {
-    p *= 1.25;
-  } else if (ctx.consecutiveLosses >= 10) {
+  // 4. Losing streak — very conservative boost
+  if (ctx.consecutiveLosses >= 50) {
     p *= 1.1;
   }
 

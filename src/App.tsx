@@ -5,12 +5,15 @@ import SlotMachinePage from './pages/SlotMachine';
 import JackpotsPage from './pages/JackpotsPage';
 import LiveTablesPage from './pages/LiveTablesPage';
 import LiveTableRoom from './pages/LiveTableRoom';
+import VIPPage from './pages/VIPPage';
 import LoginPage from './pages/auth/LoginPage';
 import SignUpPage from './pages/auth/SignUpPage';
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
 import ResetPasswordPage from './pages/auth/ResetPasswordPage';
+import AuthCallbackPage from './pages/auth/AuthCallbackPage';
 import { useAuthStore } from './store/authStore';
 import AdminAuthGuard from './components/admin/AdminAuthGuard';
+import MusicManager from './components/MusicManager';
 
 // Lazy-load admin pages to keep main bundle small
 const AdminLoginPage      = lazy(() => import('./pages/admin/AdminLoginPage'));
@@ -26,6 +29,7 @@ const LiveTablesAdminPage = lazy(() => import('./pages/admin/LiveTablesAdminPage
 const AnalyticsPage       = lazy(() => import('./pages/admin/AnalyticsPage'));
 const FraudPage           = lazy(() => import('./pages/admin/FraudPage'));
 const AuditPage           = lazy(() => import('./pages/admin/AuditPage'));
+const WithdrawalsPage     = lazy(() => import('./pages/admin/WithdrawalsPage'));
 
 const AdminFallback = () => (
   <div className="min-h-screen bg-gray-950 flex items-center justify-center">
@@ -91,14 +95,16 @@ function AppRoutes() {
   return (
     <Routes>
       {/* Public routes */}
-      <Route path="/" element={<CasinoLobby onNavigateToSlot={(id?: string, title?: string) => navigate('/slot', { state: { id, title } })} />} />
+      <Route path="/" element={<CasinoLobby onNavigateToSlot={(id?: string, title?: string, jackpotMode?: boolean) => navigate('/slot', { state: { id, title, jackpotMode } })} />} />
       <Route path="/jackpots" element={<JackpotsPage />} />
+      <Route path="/vip" element={<VIPPage />} />
       <Route path="/live-tables" element={<LiveTablesPage />} />
       <Route path="/live-tables/:tableId" element={<LiveTableRoom />} />
       <Route path="/auth/login" element={<LoginPage />} />
       <Route path="/auth/signup" element={<SignUpPage />} />
       <Route path="/auth/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/auth/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/auth/callback" element={<AuthCallbackPage />} />
 
       {/* Protected routes — require active session */}
       <Route element={<ProtectedRoute />}>
@@ -133,6 +139,7 @@ function AppRoutes() {
           {/* Finance — super_admin, finance_admin */}
           <Route element={<AdminAuthGuard requiredRoles={['super_admin','finance_admin']} />}>
             <Route path="/admin/finance" element={<Suspense fallback={<AdminFallback />}><FinancePage /></Suspense>} />
+            <Route path="/admin/withdrawals" element={<Suspense fallback={<AdminFallback />}><WithdrawalsPage /></Suspense>} />
           </Route>
 
           {/* Games / RTP / Jackpots / Live Tables — super_admin, game_manager */}
@@ -159,6 +166,7 @@ function AppRoutes() {
 export default function App() {
   return (
     <ErrorBoundary>
+      <MusicManager />
       <BrowserRouter>
         <AppRoutes />
       </BrowserRouter>

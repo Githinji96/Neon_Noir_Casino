@@ -2,9 +2,8 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAdminStore, GameConfig } from '../../store/adminStore';
 import { useToast } from '../../components/admin/ToastProvider';
-import ConfirmModal from '../../components/admin/ConfirmModal';
 import LoadingSkeleton from '../../components/admin/LoadingSkeleton';
-import { PAYOUT_TABLE } from '../../config/gameConfig';
+import { GAME_LISTINGS } from '../../config/mockData';
 import { INITIAL_TABLES } from '../../config/liveTablesData';
 
 interface GameRow {
@@ -38,7 +37,6 @@ interface TableForm {
   max_players: string;
 }
 
-const GAME_NAMES = Object.keys(PAYOUT_TABLE);
 
 export default function GamesPage() {
   const { toast } = useToast();
@@ -58,14 +56,14 @@ export default function GamesPage() {
     const cfgMap: Record<string, GameConfig> = {};
     (configs as GameConfig[] ?? []).forEach((c) => { cfgMap[c.game_id] = c; });
 
-    setGames(GAME_NAMES.map((id) => ({
-      game_id: id,
-      name: id.charAt(0).toUpperCase() + id.slice(1),
-      enabled: cfgMap[id]?.enabled ?? true,
-      min_bet: cfgMap[id]?.min_bet ?? 10,
-      max_bet: cfgMap[id]?.max_bet ?? 5000,
-      volatility: cfgMap[id]?.volatility ?? 'medium',
-      dbId: cfgMap[id]?.id,
+    setGames(GAME_LISTINGS.map((g) => ({
+      game_id: g.id,
+      name: g.title,
+      enabled: cfgMap[g.id]?.enabled ?? true,
+      min_bet: cfgMap[g.id]?.min_bet ?? 1,
+      max_bet: cfgMap[g.id]?.max_bet ?? 10000,
+      volatility: cfgMap[g.id]?.volatility ?? g.volatility.toLowerCase(),
+      dbId: cfgMap[g.id]?.id,
     })));
     setLoading(false);
   }

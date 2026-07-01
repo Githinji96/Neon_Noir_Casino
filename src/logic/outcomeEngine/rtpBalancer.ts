@@ -1,52 +1,68 @@
 /**
  * RTP Balancer
- * Computes a probability adjustment factor based on current vs target RTP.
- * Adjustments are capped at ±maxRTPAdjustment to preserve randomness perception.
+ * Computes a probability adjustment delta based on:
+ * 1. Session RTP vs target (primary correction)
+ * 2. Rolling win rate over last N rounds (variance control)
+ * 3. Consecutive streak compensation (soft, bounded)
+ * 4. Post-big-win suppression
  *
- * Returns a delta in [-maxAdj, +maxAdj] to add to base win probability.
- * Positive delta → player wins more often (RTP below target).
- * Negative delta → player wins less often (RTP above target).
+ * Returns delta in [-maxAdj, +maxAdj] to add to base win probability.
+ * Positive = player wins more (RTP below target).
+ * Negative = player wins less (RTP above target / winning too often).
+ *
+ * IMPORTANT: This adjusts probabilities, NOT outcomes directly.
+ * All outcomes are still RNG-driven.
  */
 
 import type { OutcomeConfig } from './outcomeConfig';
-import { getCurrentRTP, getSessionStats } from './sessionTracker';
+import type { SessionTracker } from './sessionTracker';
 
-export function computeProbabilityDelta(config: OutcomeConfig): number {
-  const stats = getSessionStats();
+export function computeProbabilityDelta(
+  config: OutcomeConfig,
+  tracker: SessionTracker
+): number {
+  const stats = tracker.getStats();
 
-  // Not enough data yet — no adjustment
-  if (stats.totalBet < 50) return 0;
+  // Not enough data — no adjustment
+  if (stats.totalBet < 20) return 0;
 
-  const currentRTP = getCurrentRTP();
+  const currentRTP = tracker.getCurrentRTP();
   const diff = config.targetRTP - currentRTP; // positive = under-paying
 
-  // Scale: 1% RTP gap → 0.5% probability shift (very subtle)
-  let delta = diff * 0.5;
+  // Primary RTP correction: 1% gap → 0.6% probability shift (was 0.4)
+  let delta = diff * 0.6;
 
-  // Hard clamp to configured max
-  delta = Math.max(-config.maxRTPAdjustment, Math.min(config.maxRTPAdjustment, delta));
-
-  // Streak compensation (soft, max ±2%)
-  const streakDelta = computeStreakDelta(config);
-  delta = Math.max(-config.maxRTPAdjustment, Math.min(config.maxRTPAdjustment, delta + streakDelta));
-
-  // Suppress wins briefly after a big win
-  const roundsSinceBigWin = stats.roundCount - stats.lastBigWinRound;
-  if (roundsSinceBigWin < 3) {
-    delta = Math.min(delta, -0.02); // suppress for 3 rounds after big win
+  // ── Rolling win rate suppression ──────────────────────────────────────────
+  const winRate = tracker.getWinRateLastN(config.winRateWindow);
+  if (winRate > config.winRateThreshold) {
+    // Each 5% above threshold → 2.5% probability reduction (was 1%)
+    const excess = winRate - config.winRateThreshold;
+    delta -= excess * 0.50;
+  } else if (winRate < 0.25 && stats.roundCount > 10) {
+    // Very cold streak → small fairness boost
+    delta += 0.012;
   }
 
-  return delta;
-}
-
-function computeStreakDelta(config: OutcomeConfig): number {
-  const { consecutiveLosses, consecutiveWins } = getSessionStats();
+  // ── Streak compensation ───────────────────────────────────────────────────
   const threshold = config.sessionStreakThreshold;
+  if (stats.consecutiveLosses >= threshold * 2) {
+    delta += 0.018;  // long losing streak → modest boost (was 0.025)
+  } else if (stats.consecutiveLosses >= threshold) {
+    delta += 0.008;
+  } else if (stats.consecutiveWins >= threshold * 2) {
+    delta -= 0.050;  // long winning streak → hard suppress (was 0.030)
+  } else if (stats.consecutiveWins >= threshold) {
+    delta -= 0.030;  // was 0.018
+  }
 
-  if (consecutiveLosses >= threshold * 2) return 0.03;  // long losing streak → small boost
-  if (consecutiveLosses >= threshold)     return 0.015;
-  if (consecutiveWins >= threshold * 2)   return -0.03; // long winning streak → small suppress
-  if (consecutiveWins >= threshold)       return -0.015;
+  // ── Post-big-win suppression ──────────────────────────────────────────────
+  const roundsSinceBigWin = stats.roundCount - stats.lastBigWinRound;
+  if (roundsSinceBigWin < 4) {
+    delta = Math.min(delta, -0.050);  // was -0.025
+  } else if (roundsSinceBigWin < 8) {
+    delta = Math.min(delta, -0.025);  // was -0.010
+  }
 
-  return 0;
+  // ── Hard clamp ────────────────────────────────────────────────────────────
+  return Math.max(-config.maxRTPAdjustment, Math.min(config.maxRTPAdjustment, delta));
 }

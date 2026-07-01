@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
 import { JACKPOT_CONFIGS } from '../logic/jackpot/jackpotConfig';
 import { jackpotEngine, type SpinInput } from '../logic/jackpot/jackpotEngine';
+import { getJackpotState, getProgressToThreshold } from '../logic/jackpot/jackpotState';
 
 export type { JackpotType } from '../logic/jackpot/jackpotConfig';
 
@@ -13,6 +14,9 @@ export interface JackpotDisplay {
   tags: string[];
   gameId: string;
   gameTitle: string;
+  state: 'BUILDING' | 'ACTIVE' | 'WON';
+  progressPct: number;  // 0-100 toward minimumThreshold
+  minimumThreshold: number;
 }
 
 export interface JackpotWin {
@@ -48,15 +52,23 @@ interface JackpotState {
 const CHANNEL = 'jackpot-wins';
 
 function buildDisplayList(): JackpotDisplay[] {
-  return JACKPOT_CONFIGS.map((cfg) => ({
-    id: cfg.id,
-    name: cfg.name,
-    type: cfg.type,
-    currentAmount: jackpotEngine.getAmount(cfg.id),
-    tags: cfg.tags,
-    gameId: cfg.gameId,
-    gameTitle: cfg.gameTitle,
-  }));
+  return JACKPOT_CONFIGS.map((cfg) => {
+    const amount = jackpotEngine.getAmount(cfg.id);
+    const runtimeStates = jackpotEngine.getAllStates();
+    const rs = runtimeStates.find((s) => s.id === cfg.id);
+    return {
+      id: cfg.id,
+      name: cfg.name,
+      type: cfg.type,
+      currentAmount: amount,
+      tags: cfg.tags,
+      gameId: cfg.gameId,
+      gameTitle: cfg.gameTitle,
+      state: getJackpotState(cfg, amount, rs?.lastWinTimestamp ?? 0),
+      progressPct: getProgressToThreshold(cfg, amount),
+      minimumThreshold: cfg.minimumThreshold,
+    };
+  });
 }
 
 export const useJackpotStore = create<JackpotState>((set) => ({

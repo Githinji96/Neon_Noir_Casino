@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase } from '../../lib/supabase';
-import { useAdminStore, RTPConfig, AuditLogEntry } from '../../store/adminStore';
+import { useAdminStore, RTPConfig } from '../../store/adminStore';
 import { useToast } from '../../components/admin/ToastProvider';
 import StatCard from '../../components/admin/StatCard';
 import LoadingSkeleton from '../../components/admin/LoadingSkeleton';

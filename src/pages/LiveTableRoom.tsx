@@ -3,7 +3,9 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import Navbar from '../components/Navbar';
 import { useGameStore } from '../store/gameStore';
-import { CHIP_VALUES, type LiveTable } from '../config/liveTablesData';
+import { useAuthStore } from '../store/authStore';
+import { supabase } from '../lib/supabase';
+import { getTableChipValues, type LiveTable } from '../config/liveTablesData';
 import { outcomeEngine, type RoundResult } from '../logic/outcomeEngine/outcomeEngine';
 import type { GameMode } from '../logic/outcomeEngine/outcomeConfig';
 
@@ -17,10 +19,12 @@ export default function LiveTableRoom() {
 
   const balance = useGameStore((s) => s.balance);
   const setBalance = (v: number) => useGameStore.setState({ balance: v });
+  const { user, profile } = useAuthStore();
 
   const [chips, setChips] = useState(0);
   const [phase, setPhase] = useState<GamePhase>('betting');
   const [result, setResult] = useState<RoundResult | null>(null);
+  const [lastBet, setLastBet] = useState(0);
   const [timer, setTimer] = useState(15);
   const [sessionRTP, setSessionRTP] = useState(0);
   const [log, setLog] = useState<string[]>([]);
@@ -34,9 +38,36 @@ export default function LiveTableRoom() {
   useEffect(() => { balanceRef.current = balance; }, [balance]);
   useEffect(() => { chipsRef.current = chips; }, [chips]);
 
+  // Register session on join, remove on leave
+  useEffect(() => {
+    if (!user || !table) return;
+    const username = profile?.username ?? user.email?.split('@')[0] ?? 'Player';
+
+    // Delete any stale session first, then insert fresh
+    supabase.from('live_table_sessions')
+      .delete()
+      .match({ user_id: user.id, table_id: table.id })
+      .then(() => {
+        supabase.from('live_table_sessions')
+          .insert({ table_id: table.id, user_id: user.id, username })
+          .then(({ error }) => {
+            if (error) console.error('[LiveTableRoom] session insert failed:', error.message, error.code);
+          });
+      });
+
+    return () => {
+      supabase.from('live_table_sessions')
+        .delete()
+        .match({ table_id: table.id, user_id: user.id })
+        .then(() => {});
+    };
+  }, [user?.id, table?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const gameType = (table?.gameType ?? 'roulette') as GameMode;
   const accentColor = { blackjack: '#00ff88', roulette: '#ff4466', baccarat: '#aa44ff', poker: '#ffaa00' }[gameType] ?? '#FFD700';
   const phaseLabel = { betting: 'Place Your Bets', locked: 'Bets Locked — Spinning…', result: result?.outcome ?? '' }[phase];
+  const chipValues = table ? getTableChipValues(table.minBet, table.maxBet) : [1, 5, 10, 50, 100, 500];
+  if (import.meta.env.DEV) console.log('[LiveTableRoom] chips:', chipValues, 'minBet:', table?.minBet, 'maxBet:', table?.maxBet);
 
   useEffect(() => {
     startBettingPhase();
@@ -79,6 +110,7 @@ export default function LiveTableRoom() {
         return;
       }
 
+      setLastBet(bet);
       const resolved = outcomeEngine.resolve({ gameMode: gameType, bet });
       setResult(resolved);
       setPhase('result');
@@ -96,18 +128,20 @@ export default function LiveTableRoom() {
     }, 2000);
   }
 
+  function addChip(val: number) {
+    if (phase !== 'betting') return;
+    const newTotal = chipsRef.current + val;
+    if (newTotal > balanceRef.current) return;
+    if (table && newTotal > table.maxBet) return; // enforce max bet
+    setChips(newTotal);
+  }
+
   function handlePlaceBet() {
     if (phase !== 'betting' || chipsRef.current <= 0) return;
-    // Stop the countdown timer — user has committed their bet
+    if (table && chipsRef.current < table.minBet) return; // enforce min bet
     if (timerRef.current) clearInterval(timerRef.current);
     betPlacedRef.current = true;
     resolveRound();
-  }
-
-  function addChip(val: number) {
-    if (phase !== 'betting') return;
-    if (chipsRef.current + val > balanceRef.current) return;
-    setChips((c) => c + val);
   }
 
   function clearBet() {
@@ -204,7 +238,7 @@ export default function LiveTableRoom() {
               style={{ background: 'rgba(255,215,0,0.08)', border: '1px solid rgba(255,215,0,0.2)' }}>
               <span className="text-gray-400 text-xs font-orbitron tracking-widest">BALANCE</span>
               <span className="font-orbitron font-bold text-yellow-300">
-                ${balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                KES {balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
               </span>
             </div>
 
@@ -212,36 +246,48 @@ export default function LiveTableRoom() {
             <div className="rounded-xl px-4 py-3 flex items-center justify-between"
               style={{ background: `${accentColor}11`, border: `1px solid ${accentColor}33` }}>
               <span className="text-gray-400 text-xs font-orbitron tracking-widest">YOUR BET</span>
-              <span className="font-orbitron font-bold text-lg" style={{ color: accentColor }}>${chips}</span>
+              <span className="font-orbitron font-bold text-lg" style={{ color: accentColor }}>KES {chips}</span>
             </div>
 
             {/* Chips */}
             <div>
               <p className="text-gray-500 text-[10px] font-orbitron tracking-widest mb-2">SELECT CHIPS</p>
               <div className="grid grid-cols-3 gap-2">
-                {CHIP_VALUES.map((val) => (
+                {chipValues.map((val) => (
                   <button key={val} onClick={() => addChip(val)} disabled={phase !== 'betting'}
                     className="py-2 rounded-xl font-orbitron font-bold text-xs tracking-wider transition-all active:scale-95 disabled:opacity-30"
                     style={{ background: `${accentColor}22`, color: accentColor, border: `1px solid ${accentColor}44` }}>
-                    ${val}
+                    KES {val.toLocaleString()}
                   </button>
                 ))}
               </div>
+              {table && (
+                <p className="text-white/20 text-[10px] font-orbitron mt-2 text-center">
+                  Min KES {table.minBet} · Max KES {table.maxBet.toLocaleString()}
+                </p>
+              )}
             </div>
 
             {/* Actions */}
-            <div className="flex gap-2">
-              <button onClick={clearBet} disabled={phase !== 'betting' || chips === 0}
-                className="flex-1 py-2.5 rounded-xl font-orbitron text-xs tracking-widest text-gray-400 border border-white/10 hover:border-white/30 transition-colors disabled:opacity-30">
-                CLEAR
-              </button>
-              <button
-                onClick={handlePlaceBet}
-                disabled={phase !== 'betting' || chips === 0}
-                className="flex-1 py-2.5 rounded-xl font-orbitron font-bold text-xs tracking-widest text-black transition-all active:scale-95 disabled:opacity-30"
-                style={{ background: `linear-gradient(135deg, ${accentColor}, ${accentColor}99)`, boxShadow: `0 0 14px ${accentColor}55` }}>
-                PLACE BET
-              </button>
+            <div className="flex flex-col gap-1">
+              {table && chips > 0 && chips < table.minBet && (
+                <p className="text-yellow-400 text-[10px] font-orbitron text-center">
+                  Min bet is KES {table.minBet}
+                </p>
+              )}
+              <div className="flex gap-2">
+                <button onClick={clearBet} disabled={phase !== 'betting' || chips === 0}
+                  className="flex-1 py-2.5 rounded-xl font-orbitron text-xs tracking-widest text-gray-400 border border-white/10 hover:border-white/30 transition-colors disabled:opacity-30">
+                  CLEAR
+                </button>
+                <button
+                  onClick={handlePlaceBet}
+                  disabled={phase !== 'betting' || chips === 0 || (!!table && chips < table.minBet)}
+                  className="flex-1 py-2.5 rounded-xl font-orbitron font-bold text-xs tracking-widest text-black transition-all active:scale-95 disabled:opacity-30"
+                  style={{ background: `linear-gradient(135deg, ${accentColor}, ${accentColor}99)`, boxShadow: `0 0 14px ${accentColor}55` }}>
+                  PLACE BET
+                </button>
+              </div>
             </div>
 
             {/* Result banner */}
@@ -258,7 +304,21 @@ export default function LiveTableRoom() {
                   </p>
                   <p className="text-white text-sm mt-1">{result.outcome}</p>
                   <p className="text-gray-400 text-xs">{result.detail}</p>
-                  {result.won && <p className="font-orbitron text-yellow-300 font-bold mt-1">+${result.payout}</p>}
+                  {result.won && (
+                    <>
+                      <p className="font-orbitron text-yellow-300 font-bold mt-1">
+                        +KES {(result.payout - lastBet).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      </p>
+                      <p className="text-gray-500 text-xs">
+                        Bet {lastBet} → Return {result.payout.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      </p>
+                    </>
+                  )}
+                  {!result.won && (
+                    <p className="font-orbitron text-red-400 font-bold mt-1">
+                      -KES {lastBet.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    </p>
+                  )}
                   <p className="text-gray-500 text-xs mt-2">Next round starting…</p>
                 </motion.div>
               )}
@@ -277,7 +337,7 @@ export default function LiveTableRoom() {
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500">Min/Max Bet</span>
-                <span className="text-white">${table.minBet} – ${table.maxBet.toLocaleString()}</span>
+                <span className="text-white">KES {table.minBet} – KES {table.maxBet.toLocaleString()}</span>
               </div>
             </div>
           </div>

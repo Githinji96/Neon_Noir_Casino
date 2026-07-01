@@ -11,13 +11,15 @@ interface TableRow {
   name: string;
   game_type: string;
   status: string;
-  current_players: number;
-  max_players: number;
-  dealer_name: string;
+  occupied: number;
+  seats: number;
+  min_bet: number;
+  max_bet: number;
 }
 
-interface MockPlayer {
-  id: string;
+interface TablePlayer {
+  id: string;       // session id
+  user_id: string;
   username: string;
 }
 
@@ -27,11 +29,6 @@ const statusColors: Record<string, string> = {
   inactive: 'bg-white/10 text-white/40',
 };
 
-function mockPlayers(tableId: string): MockPlayer[] {
-  const seed = tableId.charCodeAt(0);
-  return Array.from({ length: (seed % 4) + 1 }, (_, i) => ({ id: `p${i}`, username: `Player${seed + i}` }));
-}
-
 export default function LiveTablesAdminPage() {
   const { toast } = useToast();
   const { auditLog, adminProfile } = useAdminStore();
@@ -39,37 +36,93 @@ export default function LiveTablesAdminPage() {
   const [loading, setLoading] = useState(true);
   const [restartConfirm, setRestartConfirm] = useState<string | null>(null);
   const [playersModal, setPlayersModal] = useState<TableRow | null>(null);
+  const [tablePlayers, setTablePlayers] = useState<TablePlayer[]>([]);
+  const [playersLoading, setPlayersLoading] = useState(false);
+  // Stable mock bets per table id so they don't flicker on re-render
+  const [mockBets] = useState<Record<string, number>>(() =>
+    Object.fromEntries(INITIAL_TABLES.map((t) => [t.id, Math.floor(Math.random() * 50000 + 5000)]))
+  );
 
-  async function fetchTables() {
-    const { data } = await supabase.from('live_tables').select('id, name, game_type, status, current_players, max_players, dealer_name');
-    if (data && data.length > 0) {
-      setTables(data as TableRow[]);
-    } else {
-      setTables(INITIAL_TABLES.map((t) => ({
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      const { data, error: fetchErr } = await supabase
+        .from('live_tables')
+        .select('id, name, game_type, status, occupied, seats, min_bet, max_bet');
+
+      if (cancelled) return;
+
+      if (data && data.length > 0) {
+        const normalized = (data as TableRow[]).map((t) => ({
+          ...t,
+          status: t.status === 'live' || t.status === 'full' ? 'active'
+                : t.status === 'paused' ? 'paused'
+                : 'inactive',
+        }));
+        setTables(normalized);
+        setLoading(false);
+        return;
+      }
+
+      const seed: TableRow[] = INITIAL_TABLES.map((t) => ({
         id: t.id,
         name: t.name,
         game_type: t.gameType,
-        status: t.status === 'live' ? 'active' : t.status === 'full' ? 'active' : 'inactive',
-        current_players: t.currentPlayers,
-        max_players: t.maxPlayers,
-        dealer_name: t.dealerName,
-      })));
-    }
-    setLoading(false);
-  }
+        status: t.status === 'live' || t.status === 'full' ? 'active' : 'inactive',
+        occupied: t.currentPlayers,
+        seats: t.maxPlayers,
+        min_bet: t.minBet,
+        max_bet: t.maxBet,
+      }));
 
-  useEffect(() => {
-    fetchTables();
-    const id = setInterval(fetchTables, 5000);
-    return () => clearInterval(id);
+      if (fetchErr) {
+        if (!cancelled) { setTables(seed); setLoading(false); }
+        return;
+      }
+
+      const { data: inserted } = await supabase
+        .from('live_tables')
+        .insert(seed.map((s) => ({ ...s, status: 'live' })))
+        .select();
+
+      if (!cancelled) {
+        setTables((inserted as TableRow[] | null)?.map((t) => ({ ...t, status: 'active' })) ?? seed);
+        setLoading(false);
+      }
+    }
+
+    load();
+
+    const channel = supabase
+      .channel('live_tables_admin')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'live_tables' }, () => {
+        if (!cancelled) load();
+      })
+      .subscribe();
+
+    const interval = setInterval(() => { if (!cancelled) load(); }, 10000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   async function updateStatus(table: TableRow, status: 'active' | 'paused') {
-    await supabase.from('live_tables').update({ status }).eq('id', table.id);
+    setTables((prev) => prev.map((t) => t.id === table.id ? { ...t, status } : t));
+    const dbStatus = status === 'active' ? 'live' : 'paused';
+    const { error } = await supabase.from('live_tables').update({ status: dbStatus }).eq('id', table.id);
+    if (error) {
+      // Revert on failure
+      setTables((prev) => prev.map((t) => t.id === table.id ? { ...t, status: table.status } : t));
+      toast(`Failed to update table: ${error.message}`, 'error');
+      return;
+    }
     const action = status === 'paused' ? 'table_pause' : 'table_resume';
     await auditLog({ admin_id: adminProfile?.id ?? null, admin_role: adminProfile?.admin_role ?? 'super_admin', action_type: action, target_entity: 'live_tables', target_id: table.id, previous_value: table.status, new_value: status, ip_address: null });
     toast(`Table ${status === 'paused' ? 'paused' : 'resumed'}.`, 'success');
-    fetchTables();
   }
 
   async function restartRound(tableId: string) {
@@ -78,9 +131,23 @@ export default function LiveTablesAdminPage() {
     setRestartConfirm(null);
   }
 
-  async function kickPlayer(tableId: string, playerId: string) {
-    await auditLog({ admin_id: adminProfile?.id ?? null, admin_role: adminProfile?.admin_role ?? 'super_admin', action_type: 'player_kick', target_entity: 'live_tables', target_id: tableId, previous_value: null, new_value: playerId, ip_address: null });
+  async function kickPlayer(tableId: string, sessionId: string, userId: string) {
+    await supabase.from('live_table_sessions').delete().eq('id', sessionId);
+    await auditLog({ admin_id: adminProfile?.id ?? null, admin_role: adminProfile?.admin_role ?? 'super_admin', action_type: 'player_kick', target_entity: 'live_tables', target_id: tableId, previous_value: null, new_value: userId, ip_address: null });
     toast('Player kicked.', 'info');
+    setTablePlayers((prev) => prev.filter((p) => p.id !== sessionId));
+  }
+
+  async function openPlayersModal(table: TableRow) {
+    setPlayersModal(table);
+    setPlayersLoading(true);
+    const { data, error } = await supabase
+      .from('live_table_sessions')
+      .select('id, user_id, username')
+      .eq('table_id', table.id);
+    if (error && import.meta.env.DEV) console.warn('[Admin] sessions fetch:', error.message);
+    setTablePlayers((data as TablePlayer[]) ?? []);
+    setPlayersLoading(false);
   }
 
   if (loading) return <LoadingSkeleton rows={6} />;
@@ -89,7 +156,7 @@ export default function LiveTablesAdminPage() {
     <div className="flex flex-col gap-6">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {tables.map((table) => {
-          const mockBets = Math.floor(Math.random() * 50000 + 5000);
+          const bets = mockBets[table.id] ?? 10000;
           return (
             <div key={table.id} className="bg-white/5 border border-white/10 rounded-2xl p-5 flex flex-col gap-3">
               <div className="flex items-center justify-between">
@@ -103,10 +170,10 @@ export default function LiveTablesAdminPage() {
               </div>
 
               <div className="grid grid-cols-2 gap-2 text-xs text-white/50">
-                <span>Players: <span className="text-white">{table.current_players}/{table.max_players}</span></span>
-                <span>Dealer: <span className="text-white">{table.dealer_name}</span></span>
+                <span>Players: <span className="text-white">{table.occupied}/{table.seats}</span></span>
+                <span>Min/Max: <span className="text-white">KES {table.min_bet}/{table.max_bet}</span></span>
                 <span>Round: <span className="text-white">Active</span></span>
-                <span>Bets: <span className="text-[#FFD700]">KES {mockBets.toLocaleString()}</span></span>
+                <span>Bets: <span className="text-[#FFD700]">KES {bets.toLocaleString()}</span></span>
               </div>
 
               <div className="flex flex-wrap gap-2 mt-1">
@@ -117,7 +184,7 @@ export default function LiveTablesAdminPage() {
                   <button onClick={() => updateStatus(table, 'active')} className="px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-500 text-white text-xs transition-colors">Resume</button>
                 )}
                 <button onClick={() => setRestartConfirm(table.id)} className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs transition-colors">Restart Round</button>
-                <button onClick={() => setPlayersModal(table)} className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white text-xs transition-colors">View Players</button>
+                <button onClick={() => openPlayersModal(table)} className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white text-xs transition-colors">View Players</button>
               </div>
             </div>
           );
@@ -144,13 +211,19 @@ export default function LiveTablesAdminPage() {
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setPlayersModal(null)} />
           <div className="relative z-10 w-full max-w-sm bg-[#111118]/95 border border-white/10 rounded-2xl p-6">
             <h2 className="font-orbitron text-lg font-bold text-white mb-4">{playersModal.name} — Players</h2>
-            <div className="flex flex-col gap-2">
-              {mockPlayers(playersModal.id).map((p) => (
-                <div key={p.id} className="flex items-center justify-between bg-white/5 rounded-lg px-3 py-2">
-                  <span className="text-white text-sm">{p.username}</span>
-                  <button onClick={() => kickPlayer(playersModal.id, p.id)} className="px-2 py-1 rounded bg-red-600 hover:bg-red-500 text-white text-xs transition-colors">Kick</button>
-                </div>
-              ))}
+            <div className="flex flex-col gap-2 min-h-[60px]">
+              {playersLoading ? (
+                <p className="text-white/40 text-sm text-center py-4">Loading…</p>
+              ) : tablePlayers.length === 0 ? (
+                <p className="text-white/40 text-sm text-center py-4">No players at this table.</p>
+              ) : (
+                tablePlayers.map((p) => (
+                  <div key={p.id} className="flex items-center justify-between bg-white/5 rounded-lg px-3 py-2">
+                    <span className="text-white text-sm">{p.username}</span>
+                    <button onClick={() => kickPlayer(playersModal.id, p.id, p.user_id)} className="px-2 py-1 rounded bg-red-600 hover:bg-red-500 text-white text-xs transition-colors">Kick</button>
+                  </div>
+                ))
+              )}
             </div>
             <button onClick={() => setPlayersModal(null)} className="mt-4 w-full py-2 rounded-lg bg-white/10 text-white/70 text-sm hover:bg-white/15 transition-colors">Close</button>
           </div>

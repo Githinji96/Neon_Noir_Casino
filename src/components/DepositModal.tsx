@@ -25,12 +25,18 @@ export default function DepositModal({ isOpen, onClose, onPolling }: DepositModa
 
   useEffect(() => {
     if (isOpen) {
-      setPhone('254');
+      // Pre-fill phone from profile if available
+      const savedPhone = profile?.phone ?? '';
+      const normalized = savedPhone.replace(/\D/g, '');
+      const digits = normalized.startsWith('254') ? normalized.slice(3)
+                   : normalized.startsWith('0') ? normalized.slice(1)
+                   : normalized;
+      setPhone('254' + (digits || ''));
       setAmount('');
       setStatus('idle');
       setMessage('');
     }
-  }, [isOpen]);
+  }, [isOpen, profile?.phone]);
 
   const validate = (p: string): string | null => {
     if (!/^2547\d{8}$/.test(p)) return `Invalid number (got: ${p}). Use 07XXXXXXXX or 7XXXXXXXX`;

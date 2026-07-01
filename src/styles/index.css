@@ -184,7 +184,61 @@ body {
   background: var(--color-neon-yellow);
 }
 
-/* ── Reduced Motion ── */
+/* ── Light Theme ── */
+.theme-light {
+  --color-bg-primary: #f0f2f5;
+  --color-bg-secondary: #e4e7ec;
+  --color-bg-purple: #ede9f6;
+  --color-bg-card: rgba(0, 0, 0, 0.04);
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(0, 0, 0, 0.1);
+}
+
+.theme-light body {
+  background: #f0f2f5;
+  color: #1a1a2e;
+}
+
+.theme-light #root {
+  background: linear-gradient(135deg, #f0f2f5 0%, #ede9f6 50%, #e4e7ec 100%);
+}
+
+/* Backgrounds */
+.theme-light .bg-black,
+.theme-light .bg-black\/40,
+.theme-light .bg-black\/60,
+.theme-light .bg-black\/70,
+.theme-light .bg-black\/80 { background-color: rgba(240,242,245,0.95) !important; }
+.theme-light .bg-gray-950 { background-color: #e8eaf0 !important; }
+
+/* Text */
+.theme-light .text-white { color: #1a1a2e !important; }
+.theme-light .text-white\/70 { color: rgba(26,26,46,0.8) !important; }
+.theme-light .text-white\/60 { color: rgba(26,26,46,0.7) !important; }
+.theme-light .text-white\/50 { color: rgba(26,26,46,0.6) !important; }
+.theme-light .text-white\/40 { color: rgba(26,26,46,0.55) !important; }
+.theme-light .text-white\/30 { color: rgba(26,26,46,0.45) !important; }
+.theme-light .text-white\/20 { color: rgba(26,26,46,0.35) !important; }
+.theme-light .text-gray-400 { color: #4a4a6a !important; }
+.theme-light .text-gray-300 { color: #3a3a5a !important; }
+.theme-light .text-gray-500 { color: #5a5a7a !important; }
+
+/* Borders */
+.theme-light .border-white\/10 { border-color: rgba(0,0,0,0.12) !important; }
+.theme-light .border-white\/20 { border-color: rgba(0,0,0,0.18) !important; }
+
+/* Backgrounds for cards/panels */
+.theme-light .bg-white\/5 { background-color: rgba(0,0,0,0.05) !important; }
+.theme-light .bg-white\/10 { background-color: rgba(0,0,0,0.08) !important; }
+.theme-light .bg-white\/15 { background-color: rgba(0,0,0,0.1) !important; }
+
+/* Navbar */
+.theme-light nav { background-color: rgba(240,242,245,0.95) !important; border-bottom-color: rgba(0,0,0,0.1) !important; }
+
+/* Backdrop blur overlays */
+.theme-light .backdrop-blur-md { backdrop-filter: blur(12px); }
+
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

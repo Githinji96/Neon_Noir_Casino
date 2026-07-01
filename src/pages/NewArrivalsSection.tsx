@@ -1,55 +1,51 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import GameCard from '../components/GameCard';
-import { GAME_LISTINGS } from '../config/mockData';
+import { NEW_ARRIVAL_GAMES } from '../config/mockData';
 
 interface NewArrivalsSectionProps {
   onGameClick: (id: string, title: string) => void;
-}
-
-function ShimmerCard() {
-  return (
-    <div className="relative rounded-xl overflow-hidden aspect-video bg-white/5">
-      <motion.div
-        className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent"
-        animate={{ x: ['-100%', '100%'] }}
-        transition={{ duration: 1.2, repeat: Infinity, ease: 'linear' }}
-      />
-    </div>
-  );
 }
 
 export default function NewArrivalsSection({ onGameClick }: NewArrivalsSectionProps) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 1500);
+    const timer = setTimeout(() => setLoading(false), 1000);
     return () => clearTimeout(timer);
   }, []);
 
   return (
-    <section className="px-6 md:px-10 py-8">
-      {/* Title */}
-      <div className="mb-6">
-        <h2 className="font-orbitron text-2xl font-bold text-white tracking-widest uppercase">
-          New Arrivals
-        </h2>
-        <div className="mt-2 h-0.5 w-16 bg-yellow-400 shadow-[0_0_8px_#FFD700]" />
+    <section className="px-6 md:px-10 py-4">
+      <div className="mb-3 flex items-center gap-3">
+        <div>
+          <h2 className="font-orbitron text-lg font-bold text-white tracking-widest uppercase">
+            New Arrivals
+          </h2>
+          <div className="mt-1 h-0.5 w-10 bg-cyan-400" style={{ boxShadow: '0 0 6px #00FFFF' }} />
+        </div>
+        <span className="text-white/20 text-xs font-orbitron">Pure slots · No jackpot</span>
       </div>
 
-      {/* Grid */}
-      <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+      {/* Compact horizontal row */}
+      <div className="flex gap-3 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
         {loading
-          ? GAME_LISTINGS.map((_, i) => <ShimmerCard key={i} />)
-          : GAME_LISTINGS.map((game) => (
-              <GameCard
-                key={game.id}
-                id={game.id}
-                title={game.title}
-                thumbnail={game.thumbnail}
-                badge={game.badge}
-                onClick={() => onGameClick(game.id, game.title)}
-              />
+          ? NEW_ARRIVAL_GAMES.map((_, i) => (
+              <div key={i} className="relative rounded-xl overflow-hidden shrink-0 bg-white/5" style={{ width: 160, height: 100 }}>
+                <motion.div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent"
+                  animate={{ x: ['-100%', '100%'] }} transition={{ duration: 1.2, repeat: Infinity, ease: 'linear' }} />
+              </div>
+            ))
+          : NEW_ARRIVAL_GAMES.map((game) => (
+              <div key={game.id} className="shrink-0" style={{ width: 200 }}>
+                <GameCard
+                  id={game.id}
+                  title={game.title}
+                  thumbnail={game.thumbnail}
+                  badge={game.badge}
+                  onClick={() => onGameClick(game.id, game.title)}
+                />
+              </div>
             ))}
       </div>
     </section>

@@ -6,7 +6,7 @@
  * bias < 1.0 → decrease win probability (more dead spins)
  */
 
-import { GAME_CONFIG } from '../config/gameConfig';
+import { getBaseRTPForGame } from '../config/gameConfig';
 
 interface RTPState {
   totalBet: number;
@@ -14,6 +14,7 @@ interface RTPState {
   spinCount: number;
   consecutiveLosses: number;
   lastBigWinSpin: number;
+  activeGameId: string;
 }
 
 const state: RTPState = {
@@ -22,7 +23,12 @@ const state: RTPState = {
   spinCount: 0,
   consecutiveLosses: 0,
   lastBigWinSpin: -50,
+  activeGameId: 'cyber-strike-777',
 };
+
+export function setActiveGameRTP(gameId: string): void {
+  state.activeGameId = gameId;
+}
 
 export function recordSpin(bet: number, payout: number): void {
   state.totalBet += bet;
@@ -43,18 +49,18 @@ export function getWinBias(): number {
   if (state.totalBet === 0) return 1.0;
 
   const currentRTP = state.totalPayout / state.totalBet;
-  const target = GAME_CONFIG.targetRTP;
+  const target = getBaseRTPForGame(state.activeGameId);
   const diff = target - currentRTP;
 
-  // Base RTP correction: ±30% max nudge
-  let bias = 1.0 + diff * 3.0;
-  bias = Math.max(0.4, Math.min(1.8, bias));
+  // Base RTP correction: ±20% max nudge (tighter than before)
+  let bias = 1.0 + diff * 2.5;
+  bias = Math.max(0.5, Math.min(1.5, bias));
 
-  // After long losing streak → boost win chance
+  // After long losing streak → modest boost (was too aggressive at 1.4×)
   if (state.consecutiveLosses >= 12) {
-    bias = Math.min(bias * 1.4, 2.0);
+    bias = Math.min(bias * 1.2, 1.5);
   } else if (state.consecutiveLosses >= 7) {
-    bias = Math.min(bias * 1.2, 1.8);
+    bias = Math.min(bias * 1.1, 1.4);
   }
 
   // After big win → suppress wins for a few spins

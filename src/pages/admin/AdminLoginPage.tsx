@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { supabase } from '../../lib/supabase';
+import { getAuthErrorMessage, isTransientAuthError, supabase } from '../../lib/supabase';
 import { useAdminStore } from '../../store/adminStore';
 
 export default function AdminLoginPage() {
@@ -20,17 +20,29 @@ export default function AdminLoginPage() {
       const timeout = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('Request timed out. Check your internet connection.')), 15000)
       );
-      const { data: authData, error: authError } = await Promise.race([
-        supabase.auth.signInWithPassword({ email, password }),
-        timeout,
-      ]);
+
+      let authData;
+      let authError;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        ({ data: authData, error: authError } = await Promise.race([
+          supabase.auth.signInWithPassword({ email, password }),
+          timeout,
+        ]));
+
+        if (!authError || !isTransientAuthError(authError)) break;
+      }
 
       if (authError) { setError(authError.message); setLoading(false); return; }
+      if (!authData?.user) {
+        setError('Authentication completed without a valid session. Please try again.');
+        setLoading(false);
+        return;
+      }
 
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('id, username, admin_role')
-        .eq('id', authData.user!.id)
+        .eq('id', authData.user.id)
         .single();
 
       if (profileError) {
@@ -48,7 +60,7 @@ export default function AdminLoginPage() {
       await useAdminStore.getState().init();
       navigate('/admin/dashboard');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unexpected error.');
+      setError(getAuthErrorMessage(err));
       setLoading(false);
     }
   }

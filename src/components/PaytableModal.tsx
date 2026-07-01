@@ -1,5 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { JACKPOT_CONFIGS } from '../logic/jackpot/jackpotConfig';
+import { useJackpotStore } from '../store/jackpotStore';
 
 interface PaytableModalProps {
   isOpen: boolean;
@@ -107,6 +109,9 @@ function SymbolCard({ emoji, name, payout5, payout4, payout3 }: typeof STANDARD_
 }
 
 export default function PaytableModal({ isOpen, onClose }: PaytableModalProps) {
+  const [tab, setTab] = useState<'paytable' | 'jackpot'>('paytable');
+  const jackpots = useJackpotStore((s) => s.jackpots);
+
   // Close on ESC
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -163,6 +168,29 @@ export default function PaytableModal({ isOpen, onClose }: PaytableModalProps) {
             </div>
 
             <div className="px-6 pb-6 flex flex-col gap-6">
+              {/* ── TABS ── */}
+              <div className="flex gap-2">
+                {(['paytable', 'jackpot'] as const).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setTab(t)}
+                    className="px-4 py-1.5 rounded-full font-orbitron text-xs tracking-widest transition-all"
+                    style={tab === t ? {
+                      background: 'linear-gradient(135deg, #FFD700, #FFA500)',
+                      color: '#000',
+                      boxShadow: '0 0 12px rgba(255,215,0,0.4)',
+                    } : {
+                      background: 'rgba(255,255,255,0.06)',
+                      color: 'rgba(255,255,255,0.4)',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                    }}
+                  >
+                    {t === 'paytable' ? '💰 PAYTABLE' : '🏆 JACKPOT GUIDE'}
+                  </button>
+                ))}
+              </div>
+
+              {tab === 'paytable' && (<>
               {/* ── PREMIUM SYMBOLS ── */}
               <section>
                 <p className="font-orbitron text-xs text-white/40 tracking-widest uppercase mb-3">
@@ -238,6 +266,87 @@ export default function PaytableModal({ isOpen, onClose }: PaytableModalProps) {
                   ))}
                 </div>
               </section>
+
+              {/* ── FOOTER ── */}
+              </>)}
+
+              {tab === 'jackpot' && (
+                <div className="flex flex-col gap-5">
+                  {/* How it works */}
+                  <section className="rounded-2xl p-5" style={{ background: 'rgba(255,215,0,0.05)', border: '1px solid rgba(255,215,0,0.15)' }}>
+                    <p className="font-orbitron text-xs text-yellow-400/60 tracking-widest uppercase mb-3">🏆 How Jackpots Work</p>
+                    <div className="flex flex-col gap-3">
+                      {[
+                        { step: '01', title: 'Place a Bet', desc: 'Every spin you make contributes a small % of your bet to the jackpot pool. The bigger your bet, the more you contribute — and the higher your trigger chance.' },
+                        { step: '02', title: 'Pool Grows', desc: 'The jackpot grows in real time as all players spin. You can see the live amount ticking up on the jackpot counter.' },
+                        { step: '03', title: 'Random Trigger', desc: 'On any spin, the jackpot engine runs a separate RNG check. If it fires, you win the entire pool — regardless of your reel outcome.' },
+                        { step: '04', title: 'Instant Payout', desc: 'The full jackpot amount is added to your balance immediately. The pool then resets to its seed amount and starts growing again.' },
+                      ].map((item) => (
+                        <div key={item.step} className="flex gap-3 items-start">
+                          <span className="font-orbitron text-2xl font-black text-yellow-400/30 leading-none w-8 shrink-0">{item.step}</span>
+                          <div>
+                            <p className="font-orbitron text-sm font-bold text-white mb-0.5">{item.title}</p>
+                            <p className="text-white/50 text-xs leading-relaxed">{item.desc}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+
+                  {/* Tips to increase chances */}
+                  <section className="rounded-2xl p-5" style={{ background: 'rgba(0,255,200,0.04)', border: '1px solid rgba(0,255,200,0.12)' }}>
+                    <p className="font-orbitron text-xs text-cyan-400/60 tracking-widest uppercase mb-3">💡 Tips to Improve Your Chances</p>
+                    <ul className="flex flex-col gap-2">
+                      {[
+                        'Bet higher — trigger probability scales with bet size.',
+                        'Keep spinning — each spin is an independent jackpot check.',
+                        'Play jackpot-linked games — only the assigned game can trigger its jackpot.',
+                        'Watch the pool — overgrown jackpots have boosted trigger probability.',
+                      ].map((tip, i) => (
+                        <li key={i} className="flex items-start gap-2 text-white/60 text-xs">
+                          <span className="text-cyan-400 mt-0.5 shrink-0">▸</span> {tip}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+
+                  {/* Live jackpot pools */}
+                  <section>
+                    <p className="font-orbitron text-xs text-white/40 tracking-widest uppercase mb-3">📊 Live Jackpot Pools</p>
+                    <div className="flex flex-col gap-2">
+                      {JACKPOT_CONFIGS.map((cfg) => {
+                        const live = jackpots.find((j) => j.id === cfg.id);
+                        const amount = live?.currentAmount ?? cfg.seedAmount;
+                        return (
+                          <div key={cfg.id} className="flex items-center justify-between rounded-xl px-4 py-3"
+                            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                            <div>
+                              <p className="font-orbitron text-sm font-bold text-white">{cfg.name}</p>
+                              <p className="text-white/40 text-xs">{cfg.gameTitle} · {cfg.type} · {(cfg.contributionRate * 100).toFixed(1)}% contribution</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-orbitron font-bold text-yellow-300 text-sm">
+                                KES {amount.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                              </p>
+                              <p className="text-white/30 text-xs">
+                                {cfg.type === 'mega' ? '🔥 Rare · Life-changing'
+                                  : cfg.type === 'weekly' ? '⚡ Uncommon · Weekly reset'
+                                  : cfg.type === 'daily' ? '🎯 Moderate · Daily reset'
+                                  : '⚡ Frequent · Hourly reset'}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+
+                  {/* Disclaimer */}
+                  <p className="text-white/20 text-xs text-center leading-relaxed">
+                    Jackpot trigger is determined by a certified RNG on every spin. Past spins do not affect future outcomes. Play responsibly.
+                  </p>
+                </div>
+              )}
 
               {/* ── FOOTER ── */}
               <div

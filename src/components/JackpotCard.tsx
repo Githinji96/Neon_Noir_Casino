@@ -4,6 +4,9 @@ interface JackpotCardProps {
   name: string;
   amount: number;
   tags: string[];
+  state?: 'BUILDING' | 'ACTIVE' | 'WON';
+  progressPct?: number;
+  minimumThreshold?: number;
   onSpinNow: () => void;
 }
 
@@ -17,10 +20,7 @@ const TAG_STYLES: Record<string, string> = {
 const DEFAULT_TAG = 'bg-white/10 text-white/60 border border-white/20';
 
 export default function JackpotCard({ name, amount, tags, onSpinNow }: JackpotCardProps) {
-  const formatted = amount.toLocaleString('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  const formatted = amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   return (
     <motion.div
@@ -36,55 +36,35 @@ export default function JackpotCard({ name, amount, tags, onSpinNow }: JackpotCa
         boxShadow: '0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06)',
       }}
     >
-      {/* Name */}
-      <h3 className="font-orbitron font-bold text-white text-sm tracking-wide leading-tight">
-        {name}
-      </h3>
+      <h3 className="font-orbitron font-bold text-white text-sm tracking-wide leading-tight">{name}</h3>
 
-      {/* Amount — large glowing yellow */}
       <motion.p
         className="font-orbitron font-bold text-xl leading-none"
-        style={{
-          color: '#FFD700',
-          textShadow: '0 0 12px rgba(255,215,0,0.8), 0 0 24px rgba(255,215,0,0.4)',
-        }}
+        style={{ color: '#FFD700', textShadow: '0 0 12px rgba(255,215,0,0.8)' }}
         animate={{ textShadow: [
-          '0 0 10px rgba(255,215,0,0.6), 0 0 20px rgba(255,215,0,0.3)',
-          '0 0 18px rgba(255,215,0,1),   0 0 36px rgba(255,215,0,0.6)',
-          '0 0 10px rgba(255,215,0,0.6), 0 0 20px rgba(255,215,0,0.3)',
+          '0 0 10px rgba(255,215,0,0.6)',
+          '0 0 20px rgba(255,215,0,1)',
+          '0 0 10px rgba(255,215,0,0.6)',
         ]}}
         transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
       >
-        ${formatted}
+        KES {formatted}
       </motion.p>
 
-      {/* Tags */}
       <div className="flex flex-wrap gap-1.5">
         {tags.map((tag) => (
-          <span
-            key={tag}
-            className={`text-xs font-semibold px-2 py-0.5 rounded-full ${TAG_STYLES[tag] ?? DEFAULT_TAG}`}
-          >
+          <span key={tag} className={`text-xs font-semibold px-2 py-0.5 rounded-full ${TAG_STYLES[tag] ?? DEFAULT_TAG}`}>
             {tag}
           </span>
         ))}
       </div>
 
-      {/* SPIN NOW */}
       <button
         onClick={onSpinNow}
         className="mt-auto w-full py-2.5 rounded-xl font-orbitron font-bold text-xs tracking-widest text-black transition-all duration-150 active:scale-95"
         style={{
           background: 'linear-gradient(135deg, #FFD700, #FFA500)',
-          boxShadow: '0 0 14px rgba(255,215,0,0.5), 0 0 28px rgba(255,215,0,0.2)',
-        }}
-        onMouseEnter={(e) => {
-          (e.currentTarget as HTMLButtonElement).style.boxShadow =
-            '0 0 20px rgba(255,215,0,0.8), 0 0 40px rgba(255,215,0,0.4)';
-        }}
-        onMouseLeave={(e) => {
-          (e.currentTarget as HTMLButtonElement).style.boxShadow =
-            '0 0 14px rgba(255,215,0,0.5), 0 0 28px rgba(255,215,0,0.2)';
+          boxShadow: '0 0 14px rgba(255,215,0,0.5)',
         }}
       >
         SPIN NOW

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import JackpotDetailsModal from '../components/JackpotDetailsModal';
 import { useJackpotStore } from '../store/jackpotStore';
@@ -20,8 +20,8 @@ export default function HeroSection({ onPlayNow }: HeroSectionProps) {
 
   return (
     <section
-      className="relative w-full flex items-center justify-center overflow-hidden"
-      style={{ minHeight: '52vh' }}
+      className="relative w-full flex items-center justify-center overflow-hidden py-12 md:py-16"
+      style={{ minHeight: 'clamp(320px, 45vh, 600px)' }}
     >
       {/* Background gradient */}
       <div className="absolute inset-0 bg-gradient-to-b from-purple-950/90 via-black/80 to-black" />

@@ -10,16 +10,17 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { label: 'Dashboard',   path: '/admin/dashboard',   icon: '📊', roles: ['super_admin', 'finance_admin'] },
-  { label: 'Users',       path: '/admin/users',        icon: '👥', roles: ['super_admin', 'support_agent'] },
-  { label: 'Finance',     path: '/admin/finance',      icon: '💰', roles: ['super_admin', 'finance_admin'] },
-  { label: 'Games',       path: '/admin/games',        icon: '🎰', roles: ['super_admin', 'game_manager'] },
-  { label: 'RTP Control', path: '/admin/rtp',          icon: '📈', roles: ['super_admin', 'game_manager'] },
-  { label: 'Jackpots',    path: '/admin/jackpots',     icon: '🎯', roles: ['super_admin', 'game_manager'] },
-  { label: 'Live Tables', path: '/admin/live-tables',  icon: '📡', roles: ['super_admin', 'game_manager'] },
-  { label: 'Analytics',   path: '/admin/analytics',    icon: '📉', roles: ['super_admin', 'finance_admin'] },
-  { label: 'Fraud & Risk',path: '/admin/fraud',        icon: '🚨', roles: ['super_admin'] },
-  { label: 'Audit Logs',  path: '/admin/audit',        icon: '📜', roles: ['super_admin'] },
+  { label: 'Dashboard',    path: '/admin/dashboard',    icon: '📊', roles: ['super_admin', 'finance_admin'] },
+  { label: 'Users',        path: '/admin/users',         icon: '👥', roles: ['super_admin', 'support_agent'] },
+  { label: 'Finance',      path: '/admin/finance',       icon: '💰', roles: ['super_admin', 'finance_admin'] },
+  { label: 'Withdrawals',  path: '/admin/withdrawals',   icon: '💸', roles: ['super_admin', 'finance_admin'] },
+  { label: 'Games',        path: '/admin/games',         icon: '🎰', roles: ['super_admin', 'game_manager'] },
+  { label: 'RTP Control',  path: '/admin/rtp',           icon: '📈', roles: ['super_admin', 'game_manager'] },
+  { label: 'Jackpots',     path: '/admin/jackpots',      icon: '🎯', roles: ['super_admin', 'game_manager'] },
+  { label: 'Live Tables',  path: '/admin/live-tables',   icon: '📡', roles: ['super_admin', 'game_manager'] },
+  { label: 'Analytics',    path: '/admin/analytics',     icon: '📉', roles: ['super_admin', 'finance_admin'] },
+  { label: 'Fraud & Risk', path: '/admin/fraud',         icon: '🚨', roles: ['super_admin'] },
+  { label: 'Audit Logs',   path: '/admin/audit',         icon: '📜', roles: ['super_admin'] },
 ];
 
 interface AdminSidebarProps {

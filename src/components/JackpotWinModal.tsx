@@ -1,6 +1,5 @@
-import { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useJackpotStore, type JackpotWin } from '../store/jackpotStore';
+import type { JackpotWin } from '../store/jackpotStore';
 
 interface Props {
   win: JackpotWin;
@@ -94,7 +93,7 @@ export default function JackpotWinModal({ win, onClose }: Props) {
             animate={{ scale: [1, 1.05, 1] }}
             transition={{ duration: 1, repeat: Infinity }}
           >
-            ${formatted}
+            KES {formatted}
           </motion.p>
 
           <p className="font-orbitron text-sm text-cyan-400 tracking-widest">

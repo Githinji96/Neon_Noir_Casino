@@ -42,7 +42,7 @@ export default function ProgressiveJackpotsSection({ onSpinNow }: ProgressiveJac
                   color: '#FFD700',
                 }}
               >
-                🏆 Last win: ${recentWinner.amount.toLocaleString('en-US', { maximumFractionDigits: 0 })} on {recentWinner.jackpotName}
+                🏆 Last win: KES {recentWinner.amount.toLocaleString('en-US', { maximumFractionDigits: 0 })} on {recentWinner.jackpotName}
               </motion.div>
             )}
           </AnimatePresence>
@@ -56,6 +56,9 @@ export default function ProgressiveJackpotsSection({ onSpinNow }: ProgressiveJac
             name={jackpot.name}
             amount={jackpot.currentAmount}
             tags={jackpot.tags}
+            state={jackpot.state}
+            progressPct={jackpot.progressPct}
+            minimumThreshold={jackpot.minimumThreshold}
             onSpinNow={() => onSpinNow(jackpot.gameId, jackpot.gameTitle)}
           />
         ))}

@@ -16,7 +16,7 @@ export default function JackpotsPage() {
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, []);
 
   const handleSpinNow = (gameId: string, gameTitle: string) => {
-    navigate('/slot', { state: { id: gameId, title: gameTitle } });
+    navigate('/slot', { state: { id: gameId, title: gameTitle, jackpotMode: true } });
   };
 
   return (

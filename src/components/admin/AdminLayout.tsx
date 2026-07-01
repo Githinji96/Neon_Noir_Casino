@@ -8,6 +8,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/admin/dashboard':   'Dashboard',
   '/admin/users':       'Users',
   '/admin/finance':     'Finance',
+  '/admin/withdrawals': 'Withdrawals',
   '/admin/games':       'Games',
   '/admin/rtp':         'RTP Control',
   '/admin/jackpots':    'Jackpots',
@@ -40,7 +41,7 @@ export default function AdminLayout() {
           <AdminTopbar title={title} onMenuClick={() => setSidebarOpen(true)} />
 
           <main className="flex-1 overflow-y-auto p-6">
-            <Outlet />
+            <Outlet key={pathname} />
           </main>
         </div>
       </div>

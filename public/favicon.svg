@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="12" fill="#0a0a0f"/>
+  <!-- Spade shape -->
+  <path d="M32 8 C32 8 14 22 14 34 C14 41 19 45 25 44 C23 48 21 51 18 53 L46 53 C43 51 41 48 39 44 C45 45 50 41 50 34 C50 22 32 8 32 8Z" fill="#FFD700"/>
+</svg>

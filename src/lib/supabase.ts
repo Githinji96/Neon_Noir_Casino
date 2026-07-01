@@ -12,6 +12,28 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   },
 });
 
+export function isTransientAuthError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  const normalized = message.toLowerCase();
+  return normalized.includes('failed to fetch')
+    || normalized.includes('network')
+    || normalized.includes('timed out')
+    || normalized.includes('aborted')
+    || normalized.includes('socket');
+}
+
+export function getAuthErrorMessage(error: unknown, fallback = 'The authentication service could not be reached. Please check your connection and try again.') {
+  if (error instanceof Error) {
+    const normalized = error.message.toLowerCase();
+    if (normalized.includes('failed to fetch') || normalized.includes('network') || normalized.includes('timed out') || normalized.includes('aborted') || normalized.includes('socket')) {
+      return fallback;
+    }
+    return error.message;
+  }
+
+  return fallback;
+}
+
 /** Ping Supabase auth health endpoint — resolves true if reachable, false otherwise */
 export async function pingSupabase(): Promise<boolean> {
   try {
@@ -29,6 +51,7 @@ export type Profile = {
   id: string;
   username: string;
   balance: number;
+  phone?: string;
   updated_at: string;
 };
 

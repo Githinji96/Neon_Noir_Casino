@@ -18,7 +18,7 @@ export default function WinDisplay() {
   }, [lastWin, isSpinning]);
 
   const fmt = (n: number) =>
-    n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+    `KES ${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   return (
     <div className="relative w-full">

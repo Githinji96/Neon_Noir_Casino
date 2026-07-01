@@ -5,7 +5,8 @@
 
 const JAMENDO_CLIENT_ID = '8db8ad8a';
 const JAMENDO_API = 'https://api.jamendo.com/v3.0/tracks/';
-const MUSIC_TAGS = ['whistling', 'acoustic', 'jazz', 'lounge'];
+// Default genres for background music — switched to hip-hop / RnB oriented tags
+const MUSIC_TAGS = ['hip-hop', 'rnb', 'soul', 'lofi'];
 
 interface JamendoTrack {
   id: string;
@@ -26,15 +27,17 @@ let defaultVolume = 0.3;
 let fetchPromise: Promise<void> | null = null;
 let isPlaying = false;
 
-export async function fetchTracks(_tags = 'whistling', limit = 10): Promise<void> {
+export async function fetchTracks(tags?: string | string[], limit = 10): Promise<void> {
   if (fetchPromise) return fetchPromise;
+
+  const tagList = Array.isArray(tags) ? tags : (typeof tags === 'string' ? [tags] : MUSIC_TAGS);
 
   fetchPromise = (async () => {
     try {
       // Fetch all tag pools in parallel
       const results = await Promise.allSettled(
-        MUSIC_TAGS.map(async (tag) => {
-          const url = `${JAMENDO_API}?client_id=${JAMENDO_CLIENT_ID}&tags=${tag}&limit=${limit}&format=json&audioformat=mp32`;
+        tagList.map(async (tag) => {
+          const url = `${JAMENDO_API}?client_id=${JAMENDO_CLIENT_ID}&tags=${encodeURIComponent(tag)}&limit=${limit}&format=json&audioformat=mp32`;
           const res = await fetch(url);
           if (!res.ok) throw new Error(`Jamendo API error: ${res.status}`);
           const data: JamendoResponse = await res.json();
@@ -57,7 +60,7 @@ export async function fetchTracks(_tags = 'whistling', limit = 10): Promise<void
       }
 
       tracks = merged.sort(() => Math.random() - 0.5);
-      console.log(`[Jamendo] Loaded ${tracks.length} tracks (${MUSIC_TAGS.join(', ')})`);
+      console.log(`[Jamendo] Loaded ${tracks.length} tracks (${tagList.join(', ')})`);
     } catch (err) {
       console.warn('[Jamendo] Failed to fetch tracks:', err);
     }
@@ -133,6 +136,24 @@ export function resumeMusic(): void {
   } else {
     playMusic(defaultVolume);
   }
+}
+
+/** Returns whether Jamendo audio element is currently playing audio. */
+export function isJamendoPlaying(): boolean {
+  return !!audio && !audio.paused && isPlaying;
+}
+
+/** Internal debug info for UI troubleshooting */
+export function getJamendoStatus() {
+  return {
+    tracks: tracks.length,
+    currentIndex,
+    isPlaying,
+    audioSrc: audio?.src ?? null,
+    audioPaused: audio?.paused ?? null,
+    defaultVolume,
+    isMuted,
+  };
 }
 
 export function setMusicMuted(muted: boolean): void {

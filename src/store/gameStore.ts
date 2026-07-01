@@ -2,10 +2,11 @@ import { create } from 'zustand';
 import { type SpinGrid, generateSpin, setActiveGame } from '../logic/rng';
 import { type WinResult, evaluatePaylines } from '../logic/paylines';
 import { calculatePayout, calculateScatterPayout } from '../logic/payout';
-import { recordSpin, getSessionStats } from '../logic/rtpController';
+import { recordSpin, getSessionStats, setActiveGameRTP } from '../logic/rtpController';
 import { BET_LADDER, DEFAULT_BET } from '../config/betLadder';
 import { GAME_CONFIG } from '../config/gameConfig';
 import { getSymbolsForGame } from '../config/symbols';
+import { JACKPOT_GAME_IDS } from '../config/mockData';
 import { useJackpotStore } from './jackpotStore';
 import { supabase } from '../lib/supabase';
 
@@ -30,10 +31,11 @@ interface GameState {
   isJackpot: boolean;
   sessionRTP: number;
   activeGameId: string;
+  jackpotMode: boolean;
 
   spin: () => void;
   setBet: (direction: 'up' | 'down') => void;
-  setGame: (gameId: string) => void;
+  setGame: (gameId: string, jackpotMode?: boolean) => void;
   toggleAutoplay: () => void;
   toggleTurboMode: () => void;
   toggleSound: () => void;
@@ -61,6 +63,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   isJackpot: false,
   sessionRTP: 0,
   activeGameId: 'cyber-strike-777',
+  jackpotMode: false,
 
   spin: () => {
     const state = get();
@@ -90,6 +93,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         sessionRTP: stats.totalBet > 0 ? stats.totalPayout / stats.totalBet : 0,
         totalSessionBet: stats.totalBet,
         userId,
+        activeGameId: state.activeGameId,
+        jackpotMode: state.jackpotMode,
       });
       if (jackpotWin) {
         jackpotWinAmount = jackpotWin.amount;
@@ -99,6 +104,21 @@ export const useGameStore = create<GameState>((set, get) => ({
     // Generate grid + evaluate
     const grid = generateSpin();
     const { wins, scatterCount, triggerFreeSpins } = evaluatePaylines(grid);
+
+    // Near-miss detection (only on jackpot-linked games, only on losing spins)
+    // Only check for near-misses when the active game is jackpot-enabled or jackpotMode is true
+    if (!isFreeSpins && jackpotWinAmount === 0 && (state.jackpotMode || JACKPOT_GAME_IDS.has(state.activeGameId))) {
+      import('../logic/nearMissDetector').then(({ detectNearMiss }) => {
+        import('./nearMissStore').then(({ useNearMissStore }) => {
+          const nearMissStore = useNearMissStore.getState();
+          nearMissStore.recordJackpotBet();
+          const result = detectNearMiss(grid);
+          if (result.isNearMiss) {
+            nearMissStore.showNotification(result.message);
+          }
+        });
+      });
+    }
 
     // Calculate payouts
     const linePayout = calculatePayout(wins, state.bet, isFreeSpins);
@@ -124,9 +144,17 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!isFreeSpins) {
       recordSpin(state.bet, totalPayout);
 
-      // Fire-and-forget: persist spin to Supabase for real GGR/RTP analytics
       const userId = _getAuthUser ? _getAuthUser() : null;
       if (userId) {
+        // Award VIP points (fire and forget)
+        import('./vipStore').then(({ useVIPStore }) => {
+          useVIPStore.getState().awardPoints(userId, state.bet, 'bet');
+          if (totalPayout < state.bet) {
+            useVIPStore.getState().recordLoss(userId, state.bet - totalPayout);
+          }
+        });
+
+        // Fire-and-forget: persist spin to Supabase for real GGR/RTP analytics
         supabase.from('spins').insert({
           user_id: userId,
           game_id: state.activeGameId,
@@ -191,11 +219,12 @@ export const useGameStore = create<GameState>((set, get) => ({
   setSpinning: (value: boolean) => set({ isSpinning: value }),
   clearWinResults: () => set({ winResults: [] }),
   endFreeSpins: () => set({ freeSpinsRemaining: 0, freeSpinsTotalWin: 0 }),
-  setGame: (gameId: string) => {
+  setGame: (gameId: string, jackpotMode = false) => {
     setActiveGame(gameId);
+    setActiveGameRTP(gameId);
     const syms = getSymbolsForGame(gameId);
     const firstSym = syms[0]?.id ?? 'cherry';
     const idleGrid = Array.from({ length: 5 }, () => Array(3).fill(firstSym)) as SpinGrid;
-    set({ activeGameId: gameId, winResults: [], isSpinning: false, autoplay: false, reels: idleGrid });
+    set({ activeGameId: gameId, jackpotMode, winResults: [], isSpinning: false, autoplay: false, reels: idleGrid });
   },
 }));

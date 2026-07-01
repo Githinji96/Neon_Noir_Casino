@@ -36,7 +36,7 @@ export default function LiveTablesPage() {
       return;
     }
     if (balance < table.minBet) {
-      setAlertMsg(`Insufficient balance. Minimum bet is $${table.minBet}.`);
+      setAlertMsg(`Insufficient balance. Minimum bet is KES ${table.minBet}.`);
       return;
     }
     navigate(`/live-tables/${table.id}`, { state: { table } });

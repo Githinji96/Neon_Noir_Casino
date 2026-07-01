@@ -232,7 +232,7 @@ Build a role-gated admin panel at `/admin` on top of the existing React + TypeSc
   - [x] 16.5 CSV export for each report view; trigger browser download within 5s
     - _Requirements: 9.5_
 
-- [~] 17. Fraud and risk management page (`src/pages/admin/FraudPage.tsx`)
+- [ ] 17. Fraud and risk management page (`src/pages/admin/FraudPage.tsx`)
   - [x] 17.1 Implement `detectRapidHighBets(bets)` utility: flag if >20 bets >KES 5,000 in any 60s window; insert into `fraud_flags` and `admin_alerts`
     - _Requirements: 10.1_
   - [ ]* 17.2 Write property test for rapid high bets detection (Property 23)

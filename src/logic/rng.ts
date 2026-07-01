@@ -59,7 +59,9 @@ function generateNearWin(): SpinGrid {
 export function generateSpin(): SpinGrid {
   const winBias = getWinBias();
   const deadSpinRate = DEAD_SPIN_RATES[GAME_CONFIG.volatility];
-  const forceDead = Math.random() < deadSpinRate / winBias;
+  // winBias > 1 = player needs wins → fewer dead spins; winBias < 1 = suppress → more dead spins
+  const adjustedDeadRate = Math.max(0.1, Math.min(0.85, deadSpinRate * (2 - winBias)));
+  const forceDead = Math.random() < adjustedDeadRate;
 
   if (forceDead) {
     if (Math.random() < GAME_CONFIG.nearWinProbability) {

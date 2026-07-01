@@ -44,6 +44,25 @@ export const GAME_CATEGORIES: { id: GameType | 'all'; label: string; icon: strin
 
 export const CHIP_VALUES = [1, 5, 10, 50, 100, 500];
 
+/**
+ * Generate chip values that fit within a table's bet range.
+ * Always includes the minBet as the smallest chip.
+ */
+export function getTableChipValues(minBet: number | string, maxBet: number | string): number[] {
+  const min = Number(minBet);
+  const max = Number(maxBet);
+  // Standard chip denominations
+  const all = [1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000];
+  // Filter to chips within range
+  let valid = all.filter((c) => c >= min && c <= max);
+  // Always include minBet as first chip
+  if (valid.length === 0 || valid[0] !== min) {
+    valid = [min, ...valid.filter((c) => c > min)];
+  }
+  // Cap at 6 chips
+  return valid.slice(0, 6);
+}
+
 // Payout multipliers per game
 export const PAYOUTS: Record<GameType, Record<string, number>> = {
   roulette: { win: 2, zero: 36 },

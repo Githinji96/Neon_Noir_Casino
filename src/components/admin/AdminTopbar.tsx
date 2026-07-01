@@ -80,10 +80,10 @@ export default function AdminTopbar({ title, onMenuClick }: AdminTopbarProps) {
         {/* Sign out */}
         <button
           onClick={handleSignOut}
-          className="text-white/40 hover:text-red-400 transition-colors text-sm px-2 py-1 rounded-lg hover:bg-red-500/10"
+          className="flex items-center gap-1.5 text-white/40 hover:text-red-400 transition-colors text-xs font-orbitron tracking-wider px-3 py-1.5 rounded-lg hover:bg-red-500/10 border border-white/10 hover:border-red-500/30"
           aria-label="Sign out"
         >
-          ⏻
+          <span>⏻</span> LOGOUT
         </button>
       </div>
     </header>

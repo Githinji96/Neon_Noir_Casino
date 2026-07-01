@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useNavigate } from 'react-router-dom';
@@ -21,16 +21,34 @@ export default function ResetPasswordPage() {
 
   const passwordValue = watch('password', '');
 
+  // Exchange the code/token from the URL on mount so the session is ready
+  useEffect(() => {
+    const url = window.location.href;
+    const hasCode = url.includes('?code=') || url.includes('&code=');
+    const hasToken = url.includes('access_token=');
+
+    if (hasCode || hasToken) {
+      supabase.auth.exchangeCodeForSession(url).catch(() => {
+        // If exchange fails it's an expired link — user will see error on submit
+      });
+    }
+  }, []);
+
   const onSubmit = async (data: ResetPasswordFormData) => {
     setError('');
     setLoading(true);
-    const { error: err } = await supabase.auth.updateUser({ password: data.password });
-    setLoading(false);
-    if (err) {
-      setError(err.message);
-    } else {
-      setSuccess('Password updated! Redirecting to sign in...');
-      setTimeout(() => navigate('/auth/login'), 2500);
+    try {
+      const { error: err } = await supabase.auth.updateUser({ password: data.password });
+      if (err) {
+        setError(err.message);
+      } else {
+        setSuccess('Password updated successfully! Redirecting...');
+        setTimeout(() => navigate('/auth/login'), 2000);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Something went wrong.');
+    } finally {
+      setLoading(false);
     }
   };
 

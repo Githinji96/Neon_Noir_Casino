@@ -1,10 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useLocation, Link, useNavigate } from 'react-router-dom';
 import { useGameStore } from '../store/gameStore';
 import { useAuthStore } from '../store/authStore';
 import { supabase } from '../lib/supabase';
 import LeaderboardModal from './LeaderboardModal';
 import DepositModal from './DepositModal';
+import WithdrawalModal from './WithdrawalModal';
+import SettingsModal from './SettingsModal';
+import { useSettingsStore } from '../store/settingsStore';
 
 interface NavbarProps {
   activeTab?: string;
@@ -18,13 +21,15 @@ const NAV_LINKS = [
 ];
 
 const formatBalance = (balance: number): string =>
-  `$${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  `KES ${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function Navbar({ activeTab }: NavbarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
   const [depositOpen, setDepositOpen] = useState(false);
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [polling, setPolling] = useState(false);
+  const openSettings = useSettingsStore((s) => s.openSettings);
   const location = useLocation();
   const navigate = useNavigate();
   const balance = useGameStore((state) => state.balance);
@@ -39,37 +44,72 @@ export default function Navbar({ activeTab }: NavbarProps) {
     if (!checkoutId) return;
     setPolling(true);
     let attempts = 0;
-    const MAX = 2;
+    const MAX = 24; // poll for 2 minutes (24 × 5s)
 
-    // Safety: always clear after 10s regardless of poll result
+    const syncBalance = async () => {
+      const { data: prof } = await supabase
+        .from('profiles').select('balance').eq('id', user?.id).single();
+      if (prof) {
+        useAuthStore.setState((s) => ({
+          profile: s.profile ? { ...s.profile, balance: prof.balance } : null,
+        }));
+        const { useGameStore } = await import('../store/gameStore');
+        useGameStore.setState({ balance: prof.balance });
+      }
+    };
+
     const safetyTimer = setTimeout(() => {
       clearInterval(interval);
       setPolling(false);
-    }, 10000);
+    }, 125000);
 
     const interval = setInterval(async () => {
       attempts++;
+
+      // First check our DB (callback may have already updated it)
       const { data } = await supabase
-        .from('transactions')
-        .select('status')
-        .eq('checkout_request_id', checkoutId)
-        .single();
+        .from('transactions').select('status').eq('checkout_request_id', checkoutId).single();
 
       if (data?.status === 'success') {
         clearInterval(interval);
         clearTimeout(safetyTimer);
         setPolling(false);
-        const { data: prof } = await supabase
-          .from('profiles')
-          .select('balance')
-          .eq('id', user?.id)
-          .single();
-        if (prof) {
-          useAuthStore.setState((s) => ({
-            profile: s.profile ? { ...s.profile, balance: prof.balance } : null,
-          }));
-        }
-      } else if (data?.status === 'failed' || attempts >= MAX) {
+        await syncBalance();
+        return;
+      }
+
+      if (data?.status === 'failed') {
+        clearInterval(interval);
+        clearTimeout(safetyTimer);
+        setPolling(false);
+        return;
+      }
+
+      // After 30s (6 attempts), query Safaricom directly as fallback
+      if (attempts >= 6 && data?.status === 'pending') {
+        try {
+          const session = (await supabase.auth.getSession()).data.session;
+          const FUNCTIONS_URL = import.meta.env.VITE_SUPABASE_URL.replace('.supabase.co', '.supabase.co/functions/v1');
+          const res = await fetch(`${FUNCTIONS_URL}/mpesa-stk`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+            body: JSON.stringify({ action: 'query', checkoutRequestId: checkoutId }),
+          });
+          const result = await res.json();
+          if (result.status === 'success') {
+            clearInterval(interval);
+            clearTimeout(safetyTimer);
+            setPolling(false);
+            await syncBalance();
+          } else if (result.status === 'failed') {
+            clearInterval(interval);
+            clearTimeout(safetyTimer);
+            setPolling(false);
+          }
+        } catch { /* ignore query errors */ }
+      }
+
+      if (attempts >= MAX) {
         clearInterval(interval);
         clearTimeout(safetyTimer);
         setPolling(false);
@@ -79,6 +119,9 @@ export default function Navbar({ activeTab }: NavbarProps) {
 
   const handleSignOut = async () => {
     await signOut();
+    // Reset game balance so it doesn't show stale value after logout
+    const { useGameStore } = await import('../store/gameStore');
+    useGameStore.setState({ balance: 0 });
     navigate('/auth/login');
   };
 
@@ -119,24 +162,32 @@ export default function Navbar({ activeTab }: NavbarProps) {
 
           {/* Right Side */}
           <div className="hidden md:flex items-center gap-3">
-            {/* Balance */}
-            <span className="font-orbitron text-sm text-neon-yellow font-bold tracking-wider"
-              style={{ textShadow: '0 0 8px rgba(255,215,0,0.4)' }}>
-              {formatBalance(displayBalance)}
-            </span>
-
-            {/* Deposit Button */}
-            <button
-              onClick={() => !polling && setDepositOpen(true)}
-              className="btn-neon px-4 py-1.5 rounded-full text-xs font-orbitron tracking-widest flex items-center gap-1.5"
-            >
-              {polling ? (
-                <>
-                  <span className="w-3 h-3 rounded-full border-2 border-black border-t-transparent animate-spin" />
-                  PENDING...
-                </>
-              ) : 'DEPOSIT'}
-            </button>
+            {/* Balance + Deposit — only shown when logged in */}
+            {user && (
+              <>
+                <span className="font-orbitron text-sm text-neon-yellow font-bold tracking-wider"
+                  style={{ textShadow: '0 0 8px rgba(255,215,0,0.4)' }}>
+                  {formatBalance(displayBalance)}
+                </span>
+                <button
+                  onClick={() => !polling && setDepositOpen(true)}
+                  className="btn-neon px-4 py-1.5 rounded-full text-xs font-orbitron tracking-widest flex items-center gap-1.5"
+                >
+                  {polling ? (
+                    <>
+                      <span className="w-3 h-3 rounded-full border-2 border-black border-t-transparent animate-spin" />
+                      PENDING...
+                    </>
+                  ) : 'DEPOSIT'}
+                </button>
+                <button
+                  onClick={() => setWithdrawOpen(true)}
+                  className="btn-neon px-4 py-1.5 rounded-full text-xs font-orbitron tracking-widest"
+                >
+                  WITHDRAW
+                </button>
+              </>
+            )}
 
             {/* Leaderboard */}
             <button
@@ -176,18 +227,21 @@ export default function Navbar({ activeTab }: NavbarProps) {
             </button>
             <button
               aria-label="Settings"
+              onClick={openSettings}
               className="text-gray-400 hover:text-neon-yellow transition-colors duration-250 text-xl"
             >
               ⚙️
             </button>
           </div>
 
-          {/* Mobile: show balance + hamburger inline */}
+          {/* Mobile: show balance only when logged in + hamburger */}
           <div className="flex md:hidden items-center gap-2">
-            <span className="font-orbitron text-xs text-neon-yellow font-bold tracking-wider"
-              style={{ textShadow: '0 0 8px rgba(255,215,0,0.4)' }}>
-              {formatBalance(displayBalance)}
-            </span>
+            {user && (
+              <span className="font-orbitron text-xs text-neon-yellow font-bold tracking-wider"
+                style={{ textShadow: '0 0 8px rgba(255,215,0,0.4)' }}>
+                {formatBalance(displayBalance)}
+              </span>
+            )}
             <button
               className="text-gray-300 hover:text-neon-yellow transition-colors duration-250 text-2xl"
               aria-label="Toggle menu"
@@ -223,19 +277,23 @@ export default function Navbar({ activeTab }: NavbarProps) {
 
           {/* Mobile balance + actions */}
           <div className="flex items-center gap-3 mt-4 pt-4 border-t border-white/10">
-            <span className="font-orbitron text-sm text-neon-yellow font-bold tracking-wider flex-1">
-              {formatBalance(displayBalance)}
-            </span>
-            <button
-              onClick={() => !polling && setDepositOpen(true)}
-              className="btn-neon px-4 py-1.5 rounded-full text-xs font-orbitron tracking-widest flex items-center gap-1.5">
-              {polling ? (
-                <>
-                  <span className="w-3 h-3 rounded-full border-2 border-black border-t-transparent animate-spin" />
-                  PENDING...
-                </>
-              ) : 'DEPOSIT'}
-            </button>
+            {user && (
+              <>
+                <span className="font-orbitron text-sm text-neon-yellow font-bold tracking-wider flex-1">
+                  {formatBalance(displayBalance)}
+                </span>
+                <button
+                  onClick={() => !polling && setDepositOpen(true)}
+                  className="btn-neon px-4 py-1.5 rounded-full text-xs font-orbitron tracking-widest flex items-center gap-1.5">
+                  {polling ? (
+                    <>
+                      <span className="w-3 h-3 rounded-full border-2 border-black border-t-transparent animate-spin" />
+                      PENDING...
+                    </>
+                  ) : 'DEPOSIT'}
+                </button>
+              </>
+            )}
             <button aria-label="Leaderboard" onClick={() => setLeaderboardOpen(true)} className="text-gray-400 hover:text-neon-yellow transition-colors duration-250 text-xl">🏆</button>
             {user ? (
               <button onClick={handleSignOut} className="text-gray-400 hover:text-red-400 transition-colors text-xs font-orbitron tracking-wider">OUT</button>
@@ -243,13 +301,15 @@ export default function Navbar({ activeTab }: NavbarProps) {
               <button aria-label="Sign In" onClick={() => navigate('/auth/login')} className="text-gray-400 hover:text-neon-yellow transition-colors duration-250 text-xl">👤</button>
             )}
             <button aria-label="Notifications" className="text-gray-400 hover:text-neon-yellow transition-colors duration-250 text-xl">🔔</button>
-            <button aria-label="Settings" className="text-gray-400 hover:text-neon-yellow transition-colors duration-250 text-xl">⚙️</button>
+            <button aria-label="Settings" onClick={openSettings} className="text-gray-400 hover:text-neon-yellow transition-colors duration-250 text-xl">⚙️</button>
           </div>
         </div>
       )}
 
       <LeaderboardModal isOpen={leaderboardOpen} onClose={() => setLeaderboardOpen(false)} />
       <DepositModal isOpen={depositOpen} onClose={() => setDepositOpen(false)} onPolling={handlePolling} />
+      <WithdrawalModal isOpen={withdrawOpen} onClose={() => setWithdrawOpen(false)} />
+      <SettingsModal />
     </nav>
   );
 }

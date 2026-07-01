@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Outlet, Navigate, useNavigate } from 'react-router-dom';
 import { useAdminStore, AdminRole } from '../../store/adminStore';
 import { supabase } from '../../lib/supabase';
+import { hasRequiredAdminRole } from './adminAccess';
 
 interface AdminAuthGuardProps {
   requiredRoles: AdminRole[];
@@ -15,19 +16,13 @@ export default function AdminAuthGuard({ requiredRoles }: AdminAuthGuardProps) {
   const lastActivityRef = useRef(Date.now());
   const [timedOut, setTimedOut] = useState(false);
 
-  // Always call init() on mount — handles page refresh case
-  // Skip if adminProfile already set (e.g. just came from login page)
-  // Safety timeout: if init() takes > 6s, unblock and treat as unauthenticated
+  // Always revalidate admin access on mount so stale store state cannot bypass role checks.
+  // Safety timeout: if init() takes > 6s, unblock and treat as unauthenticated.
   useEffect(() => {
-    if (!adminProfile) {
-      init();
-    } else {
-      // Already authenticated (e.g. navigated from login) — clear loading immediately
-      useAdminStore.setState({ loading: false });
-    }
+    void init();
     const t = setTimeout(() => setTimedOut(true), 6000);
     return () => clearTimeout(t);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [init]);
 
   // Idle timeout
   useEffect(() => {
@@ -64,7 +59,7 @@ export default function AdminAuthGuard({ requiredRoles }: AdminAuthGuardProps) {
     return <Navigate to="/admin/login" replace />;
   }
 
-  if (!requiredRoles.includes(adminProfile.admin_role)) {
+  if (!hasRequiredAdminRole(requiredRoles, adminProfile.admin_role)) {
     return <Navigate to="/" replace state={{ accessDenied: true }} />;
   }
 
