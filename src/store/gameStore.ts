@@ -6,7 +6,7 @@ import { recordSpin, getSessionStats, setActiveGameRTP } from '../logic/rtpContr
 import { BET_LADDER, DEFAULT_BET } from '../config/betLadder';
 import { GAME_CONFIG } from '../config/gameConfig';
 import { getSymbolsForGame } from '../config/symbols';
-import { JACKPOT_GAME_IDS } from '../config/mockData';
+import { JACKPOT_GAME_IDS, POPULAR_GAME_IDS } from '../config/mockData';
 import { useJackpotStore } from './jackpotStore';
 import { supabase } from '../lib/supabase';
 
@@ -106,8 +106,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     const { wins, scatterCount, triggerFreeSpins } = evaluatePaylines(grid);
 
     // Near-miss detection (only on jackpot-linked games, only on losing spins)
+    // Exclude popular choice games from near-miss notifications
     // Only check for near-misses when the active game is jackpot-enabled or jackpotMode is true
-    if (!isFreeSpins && jackpotWinAmount === 0 && (state.jackpotMode || JACKPOT_GAME_IDS.has(state.activeGameId))) {
+    if (!isFreeSpins && jackpotWinAmount === 0 && (state.jackpotMode || JACKPOT_GAME_IDS.has(state.activeGameId)) && !POPULAR_GAME_IDS.has(state.activeGameId)) {
       import('../logic/nearMissDetector').then(({ detectNearMiss }) => {
         import('./nearMissStore').then(({ useNearMissStore }) => {
           const nearMissStore = useNearMissStore.getState();

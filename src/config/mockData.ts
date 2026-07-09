@@ -32,6 +32,15 @@ export const JACKPOT_GAME_IDS = new Set([
   'neon-samurai',
 ]);
 
+// IDs of popular choice games — exclude from near-miss notifications
+export const POPULAR_GAME_IDS = new Set([
+  'cyber-strike-777',
+  'neon-samurai',
+  'dark-matter-reels',
+  'quantum-vault',
+  'electric-storm',
+]);
+
 export const GAME_LISTINGS: GameListing[] = [
   { id: 'cyber-strike-777',   title: 'Cyber Strike 777',   thumbnail: 'https://picsum.photos/seed/game1/300/200', badge: 'HOT', rtp: 96.5, volatility: 'High',   isJackpotGame: true },
   { id: 'neon-jungle-fruits', title: 'Neon Jungle Fruits', thumbnail: 'https://picsum.photos/seed/game2/300/200', badge: 'NEW', rtp: 95.2, volatility: 'Medium' },

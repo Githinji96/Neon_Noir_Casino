@@ -56,8 +56,8 @@ export default function LiveTablesAdminPage() {
       if (data && data.length > 0) {
         const normalized = (data as TableRow[]).map((t) => ({
           ...t,
-          status: t.status === 'live' || t.status === 'full' ? 'active'
-                : t.status === 'paused' ? 'paused'
+          status: t.status === 'open' || t.status === 'live' || t.status === 'full' ? 'active'
+                : t.status === 'closed' ? 'paused'
                 : 'inactive',
         }));
         setTables(normalized);
@@ -83,7 +83,7 @@ export default function LiveTablesAdminPage() {
 
       const { data: inserted } = await supabase
         .from('live_tables')
-        .insert(seed.map((s) => ({ ...s, status: 'live' })))
+        .insert(seed.map((s) => ({ ...s, status: s.status === 'active' ? 'open' : 'closed' })))
         .select();
 
       if (!cancelled) {
@@ -112,7 +112,7 @@ export default function LiveTablesAdminPage() {
 
   async function updateStatus(table: TableRow, status: 'active' | 'paused') {
     setTables((prev) => prev.map((t) => t.id === table.id ? { ...t, status } : t));
-    const dbStatus = status === 'active' ? 'live' : 'paused';
+    const dbStatus = status === 'active' ? 'open' : 'closed';
     const { error } = await supabase.from('live_tables').update({ status: dbStatus }).eq('id', table.id);
     if (error) {
       // Revert on failure
@@ -126,9 +126,30 @@ export default function LiveTablesAdminPage() {
   }
 
   async function restartRound(tableId: string) {
-    await auditLog({ admin_id: adminProfile?.id ?? null, admin_role: adminProfile?.admin_role ?? 'super_admin', action_type: 'round_restart', target_entity: 'live_tables', target_id: tableId, previous_value: null, new_value: null, ip_address: null });
-    toast('Round restarted.', 'info');
-    setRestartConfirm(null);
+    try {
+      // Attempt to invoke an edge function that performs server-side restart and refunds
+      const fnName = 'restart-live-round';
+      const { error: fnErr } = await supabase.functions.invoke(fnName, { body: { tableId } as any }).catch((e) => ({ data: null, error: e } as any));
+      if (fnErr) {
+        console.warn('[LiveTablesAdmin] restartRound function error:', fnErr);
+        // If function not available, still record audit and inform admin to run server-side process
+        await auditLog({ admin_id: adminProfile?.id ?? null, admin_role: adminProfile?.admin_role ?? 'super_admin', action_type: 'round_restart', target_entity: 'live_tables', target_id: tableId, previous_value: null, new_value: null, ip_address: null });
+        toast('Round restart requested — server-side function not found or failed. Check server logs.', 'info');
+      } else {
+        await auditLog({ admin_id: adminProfile?.id ?? null, admin_role: adminProfile?.admin_role ?? 'super_admin', action_type: 'round_restart', target_entity: 'live_tables', target_id: tableId, previous_value: null, new_value: null, ip_address: null });
+        toast('Round restarted successfully (server-side).', 'info');
+      }
+    } catch (err) {
+      console.error('[LiveTablesAdmin.restartRound]', err);
+      toast('Failed to restart round. See logs.', 'error');
+    } finally {
+      setRestartConfirm(null);
+      // reload tables to reflect any state changes
+      const { data } = await supabase
+        .from('live_tables')
+        .select('id, name, game_type, status, occupied, seats, min_bet, max_bet');
+      if (data) setTables((data as TableRow[]).map((t) => ({ ...t, status: t.status === 'open' || t.status === 'live' || t.status === 'full' ? 'active' : t.status === 'closed' ? 'paused' : 'inactive' })));
+    }
   }
 
   async function kickPlayer(tableId: string, sessionId: string, userId: string) {

@@ -15,13 +15,24 @@ const ACTION_TYPES: AuditActionType[] = [
 ];
 
 const actionColors: Partial<Record<AuditActionType, string>> = {
-  user_ban: 'bg-red-500/20 text-red-400',
-  user_suspend: 'bg-yellow-500/20 text-yellow-400',
-  balance_adjust: 'bg-blue-500/20 text-blue-400',
-  rtp_update: 'bg-purple-500/20 text-purple-400',
-  jackpot_force_reset: 'bg-red-500/20 text-red-400',
-  withdrawal_approve: 'bg-green-500/20 text-green-400',
-  withdrawal_reject: 'bg-red-500/20 text-red-400',
+  user_ban: 'bg-red-500/20 text-red-400 border border-red-500/30',
+  user_suspend: 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30',
+  balance_adjust: 'bg-blue-500/20 text-blue-400 border border-blue-500/30',
+  password_reset: 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30',
+  rtp_update: 'bg-purple-500/20 text-purple-400 border border-purple-500/30',
+  jackpot_force_reset: 'bg-red-500/20 text-red-400 border border-red-500/30',
+  withdrawal_approve: 'bg-green-500/20 text-green-400 border border-green-500/30',
+  withdrawal_reject: 'bg-red-500/20 text-red-400 border border-red-500/30',
+  game_toggle: 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30',
+  game_config_update: 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30',
+  table_create: 'bg-sky-500/20 text-sky-400 border border-sky-500/30',
+  table_edit: 'bg-sky-500/20 text-sky-400 border border-sky-500/30',
+  table_pause: 'bg-amber-500/20 text-amber-400 border border-amber-500/30',
+  table_resume: 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30',
+  player_kick: 'bg-fuchsia-500/20 text-fuchsia-400 border border-fuchsia-500/30',
+  round_restart: 'bg-violet-500/20 text-violet-400 border border-violet-500/30',
+  bet_limit_apply: 'bg-orange-500/20 text-orange-400 border border-orange-500/30',
+  fraud_flag_dismiss: 'bg-slate-500/20 text-slate-300 border border-slate-500/30',
 };
 
 const columns: Column<AuditLogEntry>[] = [
@@ -31,7 +42,7 @@ const columns: Column<AuditLogEntry>[] = [
   {
     key: 'action_type', label: 'Action',
     render: (r) => (
-      <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${actionColors[r.action_type] ?? 'bg-white/10 text-white/60'}`}>
+      <span className={`text-xs px-2 py-0.5 rounded-full font-semibold border ${actionColors[r.action_type] ?? 'bg-slate-800 text-slate-200 border-slate-700'}`}>
         {r.action_type.replace(/_/g, ' ')}
       </span>
     ),
@@ -104,9 +115,9 @@ export default function AuditPage() {
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-white/40 text-xs uppercase tracking-widest">Action Type</label>
-          <select value={actionFilter} onChange={(e) => setActionFilter(e.target.value as AuditActionType | 'all')} className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#FFD700]/50">
-            <option value="all">All</option>
-            {ACTION_TYPES.map((a) => <option key={a} value={a}>{a.replace(/_/g, ' ')}</option>)}
+          <select value={actionFilter} onChange={(e) => setActionFilter(e.target.value as AuditActionType | 'all')} className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 pr-8 text-sm text-white appearance-none focus:outline-none focus:border-[#FFD700] focus:ring-1 focus:ring-[#FFD700]">
+            <option value="all" className="bg-slate-900 text-white">All</option>
+            {ACTION_TYPES.map((a) => <option key={a} value={a} className="bg-slate-900 text-white">{a.replace(/_/g, ' ')}</option>)}
           </select>
         </div>
         <div className="flex flex-col gap-1">

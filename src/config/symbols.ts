@@ -24,17 +24,19 @@ export interface Symbol {
 }
 
 // Base weights/multipliers — same structure across all themes
+// Tier 1-2: common symbols, land frequently, low payout
+// Tier 3-5: rare symbols — weights slashed to protect casino margin
 const BASE: Omit<Symbol, 'id' | 'label' | 'emoji'>[] = [
-  { weight: 20, multiplier: 1,   isPremium: false }, // common 1
-  { weight: 18, multiplier: 1,   isPremium: false }, // common 2
-  { weight: 18, multiplier: 1,   isPremium: false }, // common 3
-  { weight: 15, multiplier: 2,   isPremium: false }, // mid 1
-  { weight: 15, multiplier: 2,   isPremium: false }, // mid 2
-  { weight: 12, multiplier: 3,   isPremium: false }, // mid-high 1
-  { weight: 10, multiplier: 4,   isPremium: false }, // high
-  { weight:  6, multiplier: 5,   isPremium: true  }, // premium
-  { weight:  3, multiplier: 0,   isPremium: true  }, // wild
-  { weight:  3, multiplier: 0,   isPremium: true  }, // scatter
+  { weight: 25, multiplier: 1,   isPremium: false }, // tier-1 common 1  (was 20)
+  { weight: 22, multiplier: 1,   isPremium: false }, // tier-1 common 2  (was 18)
+  { weight: 22, multiplier: 1,   isPremium: false }, // tier-1 common 3  (was 18)
+  { weight: 16, multiplier: 2,   isPremium: false }, // tier-2 mid 1     (was 15)
+  { weight: 16, multiplier: 2,   isPremium: false }, // tier-2 mid 2     (was 15)
+  { weight:  5, multiplier: 3,   isPremium: false }, // tier-3 mid-high  (was 12) ← hard
+  { weight:  3, multiplier: 4,   isPremium: false }, // tier-4 high      (was 10) ← very hard
+  { weight:  1, multiplier: 5,   isPremium: true  }, // tier-5 premium   (was 6)  ← extremely rare
+  { weight:  2, multiplier: 0,   isPremium: true  }, // wild             (was 3)
+  { weight:  2, multiplier: 0,   isPremium: true  }, // scatter          (was 3)
 ];
 
 function make(id: SymbolId, label: string, emoji: string, idx: number): Symbol {

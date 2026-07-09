@@ -166,8 +166,8 @@ function AppRoutes() {
 export default function App() {
   return (
     <ErrorBoundary>
-      <MusicManager />
       <BrowserRouter>
+        <MusicManager />
         <AppRoutes />
       </BrowserRouter>
     </ErrorBoundary>

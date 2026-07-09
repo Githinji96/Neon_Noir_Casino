@@ -22,6 +22,7 @@ export interface RoundResult {
   detail: string;
   payout: number;      // total returned to player (0 = full loss)
   won: boolean;        // true if payout > bet
+  isPush: boolean;     // true if bet was returned with no net win/loss
   isBigWin: boolean;
   rtpContribution: number;
 }
@@ -42,14 +43,14 @@ export function resolveRoulette(
   // Zero — straight-up win (rare, 36:1)
   if (num === 0) {
     const payout = Math.round(bet * GAME_PAYOUTS.roulette.zero);
-    return { outcome: `🟢 Zero (0)`, detail: 'Straight up — 36:1!', payout, won: true, isBigWin: true, rtpContribution: payout / bet };
+    return { outcome: `🟢 Zero (0)`, detail: 'Straight up — 36:1!', payout, won: true, isPush: false, isBigWin: true, rtpContribution: payout / bet };
   }
 
   // Volatility-driven big win (e.g. player bet on exact number)
   const volMod = VOLATILITY_MODIFIERS[volatility];
   if (secureRandom() < volMod.bigWinChance) {
     const payout = Math.round(bet * volMod.bigWinMultiplier);
-    return { outcome: `${color === 'Red' ? '🔴' : '⚫'} ${num}`, detail: `Lucky number — ${volMod.bigWinMultiplier}:1!`, payout, won: true, isBigWin: true, rtpContribution: payout / bet };
+    return { outcome: `${color === 'Red' ? '🔴' : '⚫'} ${num}`, detail: `Lucky number — ${volMod.bigWinMultiplier}:1!`, payout, won: true, isPush: false, isBigWin: true, rtpContribution: payout / bet };
   }
 
   // Standard even-money outcome using effective probability
@@ -58,7 +59,7 @@ export function resolveRoulette(
   return {
     outcome: `${color === 'Red' ? '🔴' : '⚫'} ${num}`,
     detail: won ? `${color} wins` : `${color} — House wins`,
-    payout, won, isBigWin: false, rtpContribution: payout / bet,
+    payout, won, isPush: false, isBigWin: false, rtpContribution: payout / bet,
   };
 }
 
@@ -80,23 +81,23 @@ export function resolveBlackjack(
   // Natural blackjack (4.8% — pays 3:2)
   if (r < 0.048) {
     const payout = Math.round(bet * GAME_PAYOUTS.blackjack.blackjack); // 2.5× = 3:2 + stake
-    return { outcome: '🃏 Blackjack!', detail: 'Natural 21 — pays 3:2', payout, won: true, isBigWin: true, rtpContribution: payout / bet };
+    return { outcome: '🃏 Blackjack!', detail: 'Natural 21 — pays 3:2', payout, won: true, isPush: false, isBigWin: true, rtpContribution: payout / bet };
   }
 
   // Push (8% — bet returned)
   if (r < 0.128) {
-    return { outcome: 'Push', detail: 'Tie — bet returned', payout: bet, won: false, isBigWin: false, rtpContribution: 1 };
+    return { outcome: 'Push', detail: 'Tie — bet returned', payout: bet, won: false, isPush: true, isBigWin: false, rtpContribution: 1 };
   }
 
   // Dealer blackjack (4.8% — player loses unless also has blackjack)
   if (r < 0.176) {
-    return { outcome: 'Dealer Blackjack', detail: 'Dealer has natural 21', payout: 0, won: false, isBigWin: false, rtpContribution: 0 };
+    return { outcome: 'Dealer Blackjack', detail: 'Dealer has natural 21', payout: 0, won: false, isPush: false, isBigWin: false, rtpContribution: 0 };
   }
 
   // Volatility big win (double down / split scenario)
   if (secureRandom() < volMod.bigWinChance) {
     const payout = Math.round(bet * volMod.bigWinMultiplier);
-    return { outcome: '🎉 Big Win!', detail: 'Perfect double down', payout, won: true, isBigWin: true, rtpContribution: payout / bet };
+    return { outcome: '🎉 Big Win!', detail: 'Perfect double down', payout, won: true, isPush: false, isBigWin: true, rtpContribution: payout / bet };
   }
 
   // Standard win/loss using effective probability
@@ -105,7 +106,7 @@ export function resolveBlackjack(
   return {
     outcome: won ? '✅ You Win' : '❌ Dealer Wins',
     detail: won ? 'Player beats dealer' : 'Dealer has higher hand',
-    payout, won, isBigWin: false, rtpContribution: payout / bet,
+    payout, won, isPush: false, isBigWin: false, rtpContribution: payout / bet,
   };
 }
 
@@ -126,7 +127,7 @@ export function resolveBaccarat(
   // Tie (9.52% — pays 8:1)
   if (r < 0.0952) {
     const payout = Math.round(bet * GAME_PAYOUTS.baccarat.tie);
-    return { outcome: '🤝 Tie', detail: 'Player and Banker tie — 8:1', payout, won: true, isBigWin: true, rtpContribution: payout / bet };
+    return { outcome: '🤝 Tie', detail: 'Player and Banker tie — 8:1', payout, won: true, isPush: false, isBigWin: true, rtpContribution: payout / bet };
   }
 
   // Player wins (using effective probability on remaining ~90.5% of outcomes)
@@ -135,11 +136,11 @@ export function resolveBaccarat(
 
   if (playerWins) {
     const payout = Math.round(bet * GAME_PAYOUTS.baccarat.player); // 2× (1:1 + stake)
-    return { outcome: '🔵 Player Wins', detail: 'Player hand wins — 1:1', payout, won: true, isBigWin: false, rtpContribution: payout / bet };
+    return { outcome: '🔵 Player Wins', detail: 'Player hand wins — 1:1', payout, won: true, isPush: false, isBigWin: false, rtpContribution: payout / bet };
   }
 
   // Banker wins — player loses their bet
-  return { outcome: '🏦 Banker Wins', detail: 'Banker hand wins', payout: 0, won: false, isBigWin: false, rtpContribution: 0 };
+  return { outcome: '🏦 Banker Wins', detail: 'Banker hand wins', payout: 0, won: false, isPush: false, isBigWin: false, rtpContribution: 0 };
 }
 
 // ─── Poker ────────────────────────────────────────────────────────────────────
@@ -192,7 +193,7 @@ export function resolvePoker(
   return {
     outcome: HAND_LABELS[hand],
     detail: hand.replace('_', ' '),
-    payout, won, isBigWin,
+    payout, won, isPush: false, isBigWin,
     rtpContribution: bet > 0 ? payout / bet : 0,
   };
 }

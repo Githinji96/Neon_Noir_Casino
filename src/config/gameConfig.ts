@@ -61,11 +61,13 @@ export const VOLATILITY_WEIGHT_MODIFIERS: Record<Volatility, Record<string, numb
     wild: 1.0, scatter: 1.0,
   },
   high: {
-    bell: 0.7, star: 0.7, heart: 0.7,
-    diamond: 0.9, coin: 0.9,
-    shield: 1.1, skull: 1.1,
-    token: 1.3, seven: 1.5,
-    wild: 1.8, scatter: 1.6,
+    // Common symbols land more on high volatility (filling dead spins)
+    bell: 0.9, star: 0.9, heart: 0.9,
+    diamond: 0.8, coin: 0.8,
+    // Tier 3+ symbols suppressed further — casino protection
+    shield: 0.4, skull: 0.4,
+    token: 0.3, seven: 0.2,
+    wild: 0.5, scatter: 0.5,
   },
 };
 

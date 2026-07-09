@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Navbar from '../components/Navbar';
 import { useGameStore } from '../store/gameStore';
 import { useAuthStore } from '../store/authStore';
+import { useLiveTablesStore } from '../store/liveTablesStore';
 import { supabase } from '../lib/supabase';
 import { getTableChipValues, type LiveTable } from '../config/liveTablesData';
 import { outcomeEngine, type RoundResult } from '../logic/outcomeEngine/outcomeEngine';
@@ -12,16 +13,20 @@ import type { GameMode } from '../logic/outcomeEngine/outcomeConfig';
 type GamePhase = 'betting' | 'locked' | 'result';
 
 export default function LiveTableRoom() {
-  const { tableId: _tableId } = useParams();
+  const { tableId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const table = (location.state as { table: LiveTable } | null)?.table;
+  const tables = useLiveTablesStore((s) => s.tables);
+  const startPolling = useLiveTablesStore((s) => s.startPolling);
+  const fallbackTable = (location.state as { table: LiveTable } | null)?.table;
+  const table = tables.find((entry) => entry.id === tableId) ?? fallbackTable;
 
   const balance = useGameStore((s) => s.balance);
   const setBalance = (v: number) => useGameStore.setState({ balance: v });
-  const { user, profile } = useAuthStore();
+  const { user, profile, syncBalance } = useAuthStore();
 
   const [chips, setChips] = useState(0);
+  const [betInput, setBetInput] = useState('0');
   const [phase, setPhase] = useState<GamePhase>('betting');
   const [result, setResult] = useState<RoundResult | null>(null);
   const [lastBet, setLastBet] = useState(0);
@@ -30,6 +35,7 @@ export default function LiveTableRoom() {
   const [log, setLog] = useState<string[]>([]);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const nextRoundTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const balanceRef = useRef(balance);
   const chipsRef = useRef(chips);
   // tracks whether the user has explicitly clicked PLACE BET this round
@@ -37,6 +43,20 @@ export default function LiveTableRoom() {
 
   useEffect(() => { balanceRef.current = balance; }, [balance]);
   useEffect(() => { chipsRef.current = chips; }, [chips]);
+
+  const balanceMountedRef = useRef(false);
+  useEffect(() => {
+    if (!balanceMountedRef.current) {
+      balanceMountedRef.current = true;
+      return;
+    }
+    syncBalance(balance);
+  }, [balance, syncBalance]);
+
+  useEffect(() => {
+    const stop = startPolling();
+    return stop;
+  }, [startPolling]);
 
   // Register session on join, remove on leave
   useEffect(() => {
@@ -63,6 +83,30 @@ export default function LiveTableRoom() {
     };
   }, [user?.id, table?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Sync room phase with the shared live-table status so pause/resume is reflected immediately.
+  useEffect(() => {
+    if (!table) return;
+
+    if (table.status === 'waiting') {
+      setPhase('locked');
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      if (nextRoundTimeoutRef.current) {
+        clearTimeout(nextRoundTimeoutRef.current);
+        nextRoundTimeoutRef.current = null;
+      }
+      return;
+    }
+
+    if (table.status === 'live') {
+      if (phase === 'locked') {
+        startBettingPhase();
+      }
+    }
+  }, [table?.status, table?.id]);
+
   const gameType = (table?.gameType ?? 'roulette') as GameMode;
   const accentColor = { blackjack: '#00ff88', roulette: '#ff4466', baccarat: '#aa44ff', poker: '#ffaa00' }[gameType] ?? '#FFD700';
   const phaseLabel = { betting: 'Place Your Bets', locked: 'Bets Locked — Spinning…', result: result?.outcome ?? '' }[phase];
@@ -71,14 +115,19 @@ export default function LiveTableRoom() {
 
   useEffect(() => {
     startBettingPhase();
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (nextRoundTimeoutRef.current) clearTimeout(nextRoundTimeoutRef.current);
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function startBettingPhase() {
+    if (table?.status !== 'live') return;
     // Reset everything for a fresh round
     betPlacedRef.current = false;
     chipsRef.current = 0;
     setChips(0);
+    setBetInput('0');
     setPhase('betting');
     setResult(null);
     setTimer(15);
@@ -103,10 +152,14 @@ export default function LiveTableRoom() {
 
   function resolveRound() {
     setPhase('locked');
-    setTimeout(() => {
+    if (nextRoundTimeoutRef.current) {
+      clearTimeout(nextRoundTimeoutRef.current);
+      nextRoundTimeoutRef.current = null;
+    }
+    nextRoundTimeoutRef.current = setTimeout(() => {
       const bet = chipsRef.current;
       if (bet <= 0) {
-        setTimeout(startBettingPhase, 1000);
+        nextRoundTimeoutRef.current = setTimeout(startBettingPhase, 1000);
         return;
       }
 
@@ -119,12 +172,19 @@ export default function LiveTableRoom() {
       const newBalance = Math.round((balanceRef.current - bet + resolved.payout) * 100) / 100;
       setBalance(Math.max(0, newBalance));
 
+      const netChange = Math.round((resolved.payout - bet) * 100) / 100;
+      const resultLabel = resolved.isPush
+        ? `Tie — returned KES ${bet.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+        : resolved.won
+          ? `+KES ${netChange.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+          : `-KES ${bet.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+
       setLog((prev) => [
-        `${resolved.outcome} | Bet ${bet} → ${resolved.won ? `+${resolved.payout}` : `-${bet}`} | RTP ${resolved.sessionRTP}%`,
+        `${resolved.outcome} | Bet KES ${bet.toLocaleString('en-US', { minimumFractionDigits: 2 })} → ${resultLabel} | RTP ${resolved.sessionRTP}%`,
         ...prev.slice(0, 9),
       ]);
 
-      setTimeout(startBettingPhase, 5000);
+      nextRoundTimeoutRef.current = setTimeout(startBettingPhase, 5000);
     }, 2000);
   }
 
@@ -133,11 +193,14 @@ export default function LiveTableRoom() {
     const newTotal = chipsRef.current + val;
     if (newTotal > balanceRef.current) return;
     if (table && newTotal > table.maxBet) return; // enforce max bet
+    chipsRef.current = newTotal;
     setChips(newTotal);
+    setBetInput(newTotal.toString());
   }
 
   function handlePlaceBet() {
     if (phase !== 'betting' || chipsRef.current <= 0) return;
+    if (table?.status !== 'live') return;
     if (table && chipsRef.current < table.minBet) return; // enforce min bet
     if (timerRef.current) clearInterval(timerRef.current);
     betPlacedRef.current = true;
@@ -146,7 +209,9 @@ export default function LiveTableRoom() {
 
   function clearBet() {
     if (phase === 'betting') {
+      chipsRef.current = 0;
       setChips(0);
+      setBetInput('0');
     }
   }
 
@@ -201,7 +266,7 @@ export default function LiveTableRoom() {
                 <AnimatePresence mode="wait">
                   <motion.p key={phaseLabel} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
                     className="font-orbitron font-bold text-sm mt-1"
-                    style={{ color: phase === 'result' ? (result?.won ? '#00ff88' : '#ff4466') : accentColor }}>
+                    style={{ color: phase === 'result' ? (result?.isPush ? '#FFD700' : result?.won ? '#00ff88' : '#ff4466') : accentColor }}>
                     {phaseLabel}
                   </motion.p>
                 </AnimatePresence>
@@ -242,11 +307,60 @@ export default function LiveTableRoom() {
               </span>
             </div>
 
-            {/* Current bet */}
+            {/* Current bet (editable) */}
             <div className="rounded-xl px-4 py-3 flex items-center justify-between"
               style={{ background: `${accentColor}11`, border: `1px solid ${accentColor}33` }}>
               <span className="text-gray-400 text-xs font-orbitron tracking-widest">YOUR BET</span>
-              <span className="font-orbitron font-bold text-lg" style={{ color: accentColor }}>KES {chips}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-300 text-sm">KES</span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  step={1}
+                  value={betInput}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    // Allow typing and keep leading zero behavior natural
+                    if (raw === '') {
+                      setBetInput('');
+                      chipsRef.current = 0;
+                      setChips(0);
+                      return;
+                    }
+
+                    const digitsOnly = raw.replace(/[^0-9]/g, '');
+                    if (digitsOnly === '') {
+                      setBetInput('0');
+                      chipsRef.current = 0;
+                      setChips(0);
+                      return;
+                    }
+
+                    let v = Number(digitsOnly);
+                    if (Number.isNaN(v)) v = 0;
+                    if (v > balanceRef.current) v = balanceRef.current;
+                    if (table && v > table.maxBet) v = table.maxBet;
+                    if (v < 0) v = 0;
+
+                    chipsRef.current = v;
+                    setChips(v);
+                    setBetInput(v.toString());
+                  }}
+                  onFocus={(e) => {
+                    if (e.target.value === '0') {
+                      setBetInput('');
+                    }
+                  }}
+                  onBlur={() => {
+                    if (betInput === '') {
+                      setBetInput('0');
+                    }
+                  }}
+                  className="w-32 py-1 px-3 rounded-md bg-black/60 border border-white/10 text-yellow-300 font-orbitron font-bold text-lg"
+                  style={{ color: accentColor }}
+                />
+              </div>
             </div>
 
             {/* Chips */}
@@ -296,15 +410,25 @@ export default function LiveTableRoom() {
                 <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
                   className="rounded-xl px-4 py-4 text-center"
                   style={{
-                    background: result.won ? 'rgba(0,255,136,0.1)' : 'rgba(255,68,68,0.1)',
-                    border: `1px solid ${result.won ? '#00ff8844' : '#ff446644'}`,
+                    background: result.isPush ? 'rgba(255,255,255,0.08)' : result.won ? 'rgba(0,255,136,0.1)' : 'rgba(255,68,68,0.1)',
+                    border: `1px solid ${result.isPush ? '#FFD70044' : result.won ? '#00ff8844' : '#ff446644'}`,
                   }}>
-                  <p className="font-orbitron font-bold text-lg" style={{ color: result.won ? '#00ff88' : '#ff4466' }}>
-                    {result.isBigWin ? '🎉 BIG WIN!' : result.won ? '✅ YOU WIN!' : '😔 YOU LOSE'}
+                  <p className="font-orbitron font-bold text-lg" style={{ color: result.isPush ? '#FFD700' : result.won ? '#00ff88' : '#ff4466' }}>
+                    {result.isBigWin ? '🎉 BIG WIN!' : result.isPush ? '🤝 PUSH' : result.won ? '✅ YOU WIN!' : '😔 YOU LOSE'}
                   </p>
                   <p className="text-white text-sm mt-1">{result.outcome}</p>
                   <p className="text-gray-400 text-xs">{result.detail}</p>
-                  {result.won && (
+                  {result.isPush && (
+                    <>
+                      <p className="font-orbitron text-yellow-300 font-bold mt-1">
+                        BET RETURNED
+                      </p>
+                      <p className="text-gray-500 text-xs">
+                        Bet {lastBet} → Return {result.payout.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      </p>
+                    </>
+                  )}
+                  {result.won && !result.isPush && (
                     <>
                       <p className="font-orbitron text-yellow-300 font-bold mt-1">
                         +KES {(result.payout - lastBet).toLocaleString('en-US', { minimumFractionDigits: 2 })}
@@ -314,7 +438,7 @@ export default function LiveTableRoom() {
                       </p>
                     </>
                   )}
-                  {!result.won && (
+                  {!result.won && !result.isPush && (
                     <p className="font-orbitron text-red-400 font-bold mt-1">
                       -KES {lastBet.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                     </p>

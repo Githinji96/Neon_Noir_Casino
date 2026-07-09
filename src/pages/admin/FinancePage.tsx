@@ -31,6 +31,7 @@ export default function FinancePage() {
   const { auditLog, adminProfile } = useAdminStore();
   const [transactions, setTransactions] = useState<TxRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [processingId, setProcessingId] = useState<string | null>(null);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -58,28 +59,78 @@ export default function FinancePage() {
   }, [transactions, statusFilter, typeFilter, startDate, endDate]);
 
   async function handleApprove(id: string) {
-    await supabase.from('transactions').update({ status: 'approved' }).eq('id', id);
-    await auditLog({ admin_id: adminProfile?.id ?? null, admin_role: adminProfile?.admin_role ?? 'super_admin', action_type: 'withdrawal_approve', target_entity: 'transactions', target_id: id, previous_value: 'pending', new_value: 'approved', ip_address: null });
-    toast('Withdrawal approved.', 'success');
-    fetchTx();
+    if (!window.confirm('Approve this withdrawal request?')) return;
+    setProcessingId(id);
+    try {
+      await supabase.from('transactions').update({ status: 'approved' }).eq('id', id);
+      await auditLog({
+        admin_id: adminProfile?.id ?? null,
+        admin_role: adminProfile?.admin_role ?? 'super_admin',
+        action_type: 'withdrawal_approve',
+        target_entity: 'transactions',
+        target_id: id,
+        previous_value: 'pending',
+        new_value: 'approved',
+        ip_address: null,
+      });
+      toast('Withdrawal approved.', 'success');
+    } catch (err) {
+      console.error('[FinancePage.handleApprove]', err);
+      toast('Approve failed. Please try again.', 'error');
+    } finally {
+      setProcessingId(null);
+      fetchTx();
+    }
   }
 
   async function handleReject(id: string) {
-    await supabase.from('transactions').update({ status: 'rejected' }).eq('id', id);
-    await auditLog({ admin_id: adminProfile?.id ?? null, admin_role: adminProfile?.admin_role ?? 'super_admin', action_type: 'withdrawal_reject', target_entity: 'transactions', target_id: id, previous_value: 'pending', new_value: 'rejected', ip_address: null });
-    toast('Withdrawal rejected.', 'info');
-    fetchTx();
+    if (!window.confirm('Reject this withdrawal request?')) return;
+    setProcessingId(id);
+    try {
+      await supabase.from('transactions').update({ status: 'rejected' }).eq('id', id);
+      await auditLog({
+        admin_id: adminProfile?.id ?? null,
+        admin_role: adminProfile?.admin_role ?? 'super_admin',
+        action_type: 'withdrawal_reject',
+        target_entity: 'transactions',
+        target_id: id,
+        previous_value: 'pending',
+        new_value: 'rejected',
+        ip_address: null,
+      });
+      toast('Withdrawal rejected.', 'info');
+    } catch (err) {
+      console.error('[FinancePage.handleReject]', err);
+      toast('Reject failed. Please try again.', 'error');
+    } finally {
+      setProcessingId(null);
+      fetchTx();
+    }
   }
 
   async function handleRetry(row: TxRow) {
+    if (processingId) return;
+    setProcessingId(row.id);
     try {
       await supabase.functions.invoke('mpesa-stk', { body: { transactionId: row.id, amount: row.amount } });
-      await auditLog({ admin_id: adminProfile?.id ?? null, admin_role: adminProfile?.admin_role ?? 'super_admin', action_type: 'payment_retry', target_entity: 'transactions', target_id: row.id, previous_value: 'failed', new_value: 'pending', ip_address: null });
+      await auditLog({
+        admin_id: adminProfile?.id ?? null,
+        admin_role: adminProfile?.admin_role ?? 'super_admin',
+        action_type: 'payment_retry',
+        target_entity: 'transactions',
+        target_id: row.id,
+        previous_value: 'failed',
+        new_value: 'pending',
+        ip_address: null,
+      });
       toast('Payment retry initiated.', 'info');
-    } catch {
+    } catch (err) {
+      console.error('[FinancePage.handleRetry]', err);
       toast('Retry failed.', 'error');
+    } finally {
+      setProcessingId(null);
+      fetchTx();
     }
-    fetchTx();
   }
 
   const totalDeposits = filtered.filter((t) => t.type === 'deposit' && t.status === 'success').reduce((a, t) => a + t.amount, 0);
@@ -107,14 +158,33 @@ export default function FinancePage() {
       key: 'id', label: 'Actions',
       render: (r) => (
         <div className="flex gap-1">
-          {r.status === 'pending' && (
+          {r.status === 'pending' && r.type === 'withdrawal' ? (
             <>
-              <button onClick={(e) => { e.stopPropagation(); handleApprove(r.id); }} className="px-2 py-1 rounded bg-green-600 hover:bg-green-500 text-white text-xs transition-colors">Approve</button>
-              <button onClick={(e) => { e.stopPropagation(); handleReject(r.id); }} className="px-2 py-1 rounded bg-red-600 hover:bg-red-500 text-white text-xs transition-colors">Reject</button>
+              <button
+                onClick={(e) => { e.stopPropagation(); handleApprove(r.id); }}
+                disabled={processingId === r.id}
+                className="px-2 py-1 rounded bg-green-600 hover:bg-green-500 text-white text-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Approve
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); handleReject(r.id); }}
+                disabled={processingId === r.id}
+                className="px-2 py-1 rounded bg-red-600 hover:bg-red-500 text-white text-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Reject
+              </button>
             </>
-          )}
-          {r.status === 'failed' && (
-            <button onClick={(e) => { e.stopPropagation(); handleRetry(r); }} className="px-2 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white text-xs transition-colors">Retry</button>
+          ) : r.status === 'failed' ? (
+            <button
+              onClick={(e) => { e.stopPropagation(); handleRetry(r); }}
+              disabled={processingId === r.id}
+              className="px-2 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white text-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Retry
+            </button>
+          ) : (
+            <span className="text-white/40 text-xs">No actions</span>
           )}
         </div>
       ),
@@ -142,13 +212,13 @@ export default function FinancePage() {
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-white/40 text-xs uppercase tracking-widest">Status</label>
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#FFD700]/50">
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 pr-8 text-sm text-white appearance-none focus:outline-none focus:border-[#FFD700] focus:ring-1 focus:ring-[#FFD700]">
             {['all', 'pending', 'success', 'failed', 'approved', 'rejected'].map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-white/40 text-xs uppercase tracking-widest">Type</label>
-          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#FFD700]/50">
+          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 pr-8 text-sm text-white appearance-none focus:outline-none focus:border-[#FFD700] focus:ring-1 focus:ring-[#FFD700]">
             {['all', 'deposit', 'withdrawal', 'bet', 'payout'].map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>

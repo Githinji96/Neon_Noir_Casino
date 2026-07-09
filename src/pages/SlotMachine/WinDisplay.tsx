@@ -5,12 +5,14 @@ import { useGameStore } from '../../store/gameStore';
 export default function WinDisplay() {
   const balance = useGameStore((s) => s.balance);
   const lastWin = useGameStore((s) => s.lastWin);
+  const bet = useGameStore((s) => s.bet);
   const isSpinning = useGameStore((s) => s.isSpinning);
 
   const [showOverlay, setShowOverlay] = useState(false);
 
   useEffect(() => {
-    if (lastWin > 0 && !isSpinning) {
+    // Only show WIN overlay when payout exceeds the bet (actual profit)
+    if (lastWin > bet && !isSpinning) {
       setShowOverlay(true);
       const timer = setTimeout(() => setShowOverlay(false), 2000);
       return () => clearTimeout(timer);
@@ -22,22 +24,19 @@ export default function WinDisplay() {
 
   return (
     <div className="relative w-full">
-      {/* Info bar */}
       <div className="flex justify-between items-center px-4 py-2 bg-gray-900/80 rounded-lg border border-gray-700">
-        {/* Balance */}
         <div className="flex flex-col items-start">
           <span className="text-xs text-gray-400 uppercase tracking-widest">Balance</span>
           <span className="font-orbitron text-white text-lg">{fmt(balance)}</span>
         </div>
-
-        {/* Last Win */}
         <div className="flex flex-col items-end">
-          <span className="text-xs text-gray-400 uppercase tracking-widest">Last Win</span>
-          <span className="font-orbitron text-yellow-300 text-lg">{fmt(lastWin)}</span>
+          <span className="text-xs text-gray-400 uppercase tracking-widest">Last Payout</span>
+          <span className={`font-orbitron text-lg ${lastWin > bet ? 'text-green-400' : lastWin > 0 ? 'text-yellow-300' : 'text-white/30'}`}>
+            {fmt(lastWin)}
+          </span>
         </div>
       </div>
 
-      {/* Win announcement overlay */}
       <AnimatePresence>
         {showOverlay && (
           <motion.div
