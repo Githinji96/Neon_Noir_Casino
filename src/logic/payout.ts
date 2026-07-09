@@ -9,9 +9,10 @@ import { GAME_CONFIG } from '../config/gameConfig';
 import { getActiveSymbols } from './rng';
 
 // Payout multipliers by symbol multiplier tier: [3match, 4match, 5match]
+// Tier 1 (common): 3-match returns bet (1×), not 0.5× — no one likes winning less than they bet
 const TIER_PAYOUTS: Record<number, [number, number, number]> = {
   0: [0,   0,    0   ], // scatter/wild — handled separately
-  1: [0.5, 1,    2   ],
+  1: [1,   1,    2   ], // raised 3-match from 0.5 to 1, rest unchanged
   2: [1,   3,    8   ],
   3: [2,   6,    15  ],
   4: [4,   12,   30  ],

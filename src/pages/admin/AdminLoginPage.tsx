@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getAuthErrorMessage, isTransientAuthError, supabase } from '../../lib/supabase';
+import { normalizeAdminRole } from '../../components/admin/adminAccess';
 import { useAdminStore } from '../../store/adminStore';
 
 export default function AdminLoginPage() {
@@ -9,8 +10,52 @@ export default function AdminLoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
   const [error, setError] = useState('');
   const isTimeout = params.get('reason') === 'timeout';
+
+  useEffect(() => {
+    let active = true;
+
+    async function bootstrapExistingSession() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user) {
+          if (active) setCheckingSession(false);
+          return;
+        }
+
+        const { data: profile, error } = await supabase
+          .from('profiles')
+          .select('id, username, admin_role')
+          .eq('id', session.user.id)
+          .maybeSingle();
+
+        if (error) {
+          console.warn('[AdminLoginPage] existing-session profile lookup failed:', error.message);
+          if (active) setCheckingSession(false);
+          return;
+        }
+
+        const role = normalizeAdminRole(profile?.admin_role);
+        if (role && profile) {
+          const safeProfile = profile;
+          useAdminStore.setState({ adminProfile: { id: safeProfile.id, username: safeProfile.username, admin_role: role }, loading: false });
+          if (active) navigate('/admin/dashboard', { replace: true });
+          return;
+        }
+
+        await supabase.auth.signOut();
+      } catch (err) {
+        console.warn('[AdminLoginPage] existing-session bootstrap failed:', err);
+      } finally {
+        if (active) setCheckingSession(false);
+      }
+    }
+
+    void bootstrapExistingSession();
+    return () => { active = false; };
+  }, [navigate]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -43,7 +88,7 @@ export default function AdminLoginPage() {
         .from('profiles')
         .select('id, username, admin_role')
         .eq('id', authData.user.id)
-        .single();
+        .maybeSingle();
 
       if (profileError) {
         setError(`Profile fetch failed: ${profileError.message}`);
@@ -51,7 +96,9 @@ export default function AdminLoginPage() {
         return;
       }
 
-      if (!profile?.admin_role) {
+      const role = normalizeAdminRole(profile?.admin_role);
+      if (!role) {
+        await supabase.auth.signOut();
         setError('Access denied: your account does not have admin privileges.');
         setLoading(false);
         return;
@@ -79,6 +126,11 @@ export default function AdminLoginPage() {
           </div>
         )}
 
+        {checkingSession ? (
+          <div className="flex items-center justify-center py-4">
+            <div className="w-5 h-5 rounded-full border-2 border-[#FFD700] border-t-transparent animate-spin" />
+          </div>
+        ) : (
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <label className="text-white/50 text-xs uppercase tracking-widest">Email</label>
@@ -118,6 +170,7 @@ export default function AdminLoginPage() {
             ) : 'SIGN IN'}
           </button>
         </form>
+        )}
       </div>
     </div>
   );

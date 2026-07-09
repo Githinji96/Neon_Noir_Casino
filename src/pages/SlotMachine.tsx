@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useGameStore } from '../store/gameStore';
 import { useAuthStore } from '../store/authStore';
+import { useSettingsStore } from '../store/settingsStore';
 import {
   playSpinSound,
   playReelStop,
@@ -47,6 +48,7 @@ export default function SlotMachinePage({ onBack }: SlotMachinePageProps) {
   const balance = useGameStore((s) => s.balance);
   const isPaytableOpen = useGameStore((s) => s.isPaytableOpen);
   const soundEnabled = useGameStore((s) => s.soundEnabled);
+  const musicEnabled = useSettingsStore((s) => s.settings.musicEnabled);
   const triggerFreeSpins = useGameStore((s) => s.triggerFreeSpins);
   const spin = useGameStore((s) => s.spin);
   const setSpinning = useGameStore((s) => s.setSpinning);
@@ -64,14 +66,18 @@ export default function SlotMachinePage({ onBack }: SlotMachinePageProps) {
   // stopMusic on cleanup ensures music stops when leaving the slot page.
   useEffect(() => {
     if (loading) return;
-    // Use default global genres (hip-hop / rnb). Preload tracks then start when ready.
-    fetchTracks(undefined, 10).then(() => {
-      if (soundEnabled) playMusic(0.3);
-    });
+
+    if (soundEnabled && musicEnabled) {
+      // Use default global genres (hip-hop / RnB). Preload tracks then start when ready.
+      fetchTracks(undefined, 10).then(() => {
+        if (soundEnabled && musicEnabled) playMusic(0.3);
+      });
+    }
+
     return () => {
       pauseMusic(); // pause when leaving the slot page, keep tracks cached
     };
-  }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [loading, soundEnabled, musicEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Respond to sound toggle AFTER mount:
   // - turning OFF → pause music
@@ -110,7 +116,8 @@ export default function SlotMachinePage({ onBack }: SlotMachinePageProps) {
 
   // Sync balance + record wins to Supabase after each spin
   useEffect(() => {
-    if (isSpinning) return;
+    if (isSpinning)
+       return;
     syncBalance(balance);
     const lastWin = useGameStore.getState().lastWin;
     if (lastWin > 0) recordWin(lastWin, gameTitle);

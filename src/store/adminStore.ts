@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
-import { hasRequiredAdminRole } from '../components/admin/adminAccess';
+import { hasRequiredAdminRole, normalizeAdminRole } from '../components/admin/adminAccess';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -151,7 +151,8 @@ export const useAdminStore = create<AdminState>((set) => ({
         return;
       }
 
-      if (!profile.admin_role || !hasRequiredAdminRole(['super_admin', 'finance_admin', 'support_agent', 'game_manager'], profile.admin_role as AdminRole)) {
+      const normalizedRole = normalizeAdminRole(profile.admin_role);
+      if (!normalizedRole || !hasRequiredAdminRole(['super_admin', 'finance_admin', 'support_agent', 'game_manager'], normalizedRole)) {
         console.warn('[adminStore.init] profile has no valid admin_role:', profile);
         set({ adminProfile: null, loading: false });
         return;
@@ -161,7 +162,7 @@ export const useAdminStore = create<AdminState>((set) => ({
         adminProfile: {
           id: profile.id,
           username: profile.username,
-          admin_role: profile.admin_role as AdminRole,
+          admin_role: normalizedRole,
         },
         loading: false,
       });
