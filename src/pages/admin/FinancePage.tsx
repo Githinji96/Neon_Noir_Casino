@@ -144,7 +144,7 @@ export default function FinancePage() {
       console.error('[FinancePage] fetchTx error:', error.message, error.code, error.details);
       toast(`Failed to load transactions: ${error.message}`, 'error');
     }
-    setTransactions((data as TxRow[]) ?? []);
+    setTransactions((data as unknown as TxRow[]) ?? []);
     setLoading(false);
   }
 

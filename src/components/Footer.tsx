@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
@@ -120,7 +120,6 @@ function AccordionSection({ title, children }: { title: string; children: React.
 // ─── Main Footer ──────────────────────────────────────────────────────────────
 
 export default function Footer() {
-  const navigate = useNavigate();
   const [showTop, setShowTop] = useState(false);
   const [email, setEmail] = useState('');
   const [subscribed, setSubscribed] = useState(false);
