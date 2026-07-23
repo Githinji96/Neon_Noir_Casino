@@ -79,8 +79,10 @@ export const useJackpotStore = create<JackpotState>((set) => ({
 
   processSpin: (input) => {
     const result = jackpotEngine.processSpin(input);
-    set({ jackpots: buildDisplayList() });
-    if (!result.win) return null;
+    if (!result.win) {
+      set({ jackpots: buildDisplayList() });
+      return null;
+    }
 
     const win: JackpotWin = {
       jackpotId: result.win.jackpotId,
@@ -89,6 +91,7 @@ export const useJackpotStore = create<JackpotState>((set) => ({
       timestamp: result.win.timestamp,
     };
 
+    // Single set() covering both the updated amounts and the win state
     set({ recentWinner: win, pendingWin: win, jackpots: buildDisplayList() });
 
     // Persist + broadcast (fire and forget)
@@ -145,10 +148,11 @@ export const useJackpotStore = create<JackpotState>((set) => ({
   },
 
   startRealTimeGrowth: () => {
+    // Use 1000ms ticks instead of 120ms — 8×/sec was thrashing React renders
     const interval = setInterval(() => {
       jackpotEngine.applyGrowthTick();
       set({ jackpots: buildDisplayList() });
-    }, 120);
+    }, 1000);
     return () => clearInterval(interval);
   },
 

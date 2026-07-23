@@ -12,6 +12,7 @@ const ACTION_TYPES: AuditActionType[] = [
   'table_pause', 'table_resume', 'player_kick', 'round_restart',
   'rtp_update', 'jackpot_config_update', 'jackpot_force_reset',
   'bet_limit_apply', 'fraud_flag_dismiss',
+  'reset_player_wins', 'reset_player_bets', 'reset_player_stats',
 ];
 
 const actionColors: Partial<Record<AuditActionType, string>> = {
@@ -33,6 +34,9 @@ const actionColors: Partial<Record<AuditActionType, string>> = {
   round_restart: 'bg-violet-500/20 text-violet-400 border border-violet-500/30',
   bet_limit_apply: 'bg-orange-500/20 text-orange-400 border border-orange-500/30',
   fraud_flag_dismiss: 'bg-slate-500/20 text-slate-300 border border-slate-500/30',
+  reset_player_wins: 'bg-rose-500/20 text-rose-400 border border-rose-500/30',
+  reset_player_bets: 'bg-rose-500/20 text-rose-400 border border-rose-500/30',
+  reset_player_stats: 'bg-rose-600/20 text-rose-300 border border-rose-600/30',
 };
 
 const columns: Column<AuditLogEntry>[] = [

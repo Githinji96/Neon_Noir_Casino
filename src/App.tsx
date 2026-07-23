@@ -11,9 +11,14 @@ import SignUpPage from './pages/auth/SignUpPage';
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
 import ResetPasswordPage from './pages/auth/ResetPasswordPage';
 import AuthCallbackPage from './pages/auth/AuthCallbackPage';
+import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
+import TermsAndConditionsPage from './pages/TermsAndConditionsPage';
+import ContactPage from './pages/ContactPage';
 import { useAuthStore } from './store/authStore';
 import AdminAuthGuard from './components/admin/AdminAuthGuard';
 import MusicManager from './components/MusicManager';
+import Footer from './components/Footer';
+import ScrollToTop from './components/ScrollToTop';
 
 // Lazy-load admin pages to keep main bundle small
 const AdminLoginPage      = lazy(() => import('./pages/admin/AdminLoginPage'));
@@ -30,6 +35,7 @@ const AnalyticsPage       = lazy(() => import('./pages/admin/AnalyticsPage'));
 const FraudPage           = lazy(() => import('./pages/admin/FraudPage'));
 const AuditPage           = lazy(() => import('./pages/admin/AuditPage'));
 const WithdrawalsPage     = lazy(() => import('./pages/admin/WithdrawalsPage'));
+const SupportTicketsPage  = lazy(() => import('./pages/admin/SupportTicketsPage'));
 
 const AdminFallback = () => (
   <div className="min-h-screen bg-gray-950 flex items-center justify-center">
@@ -85,6 +91,19 @@ function ProtectedRoute() {
   return user ? <Outlet /> : <Navigate to="/auth/login" state={{ from: location }} replace />;
 }
 
+/** Layout wrapper that adds the Footer to all public pages */
+function PublicLayout() {
+  const location = useLocation();
+  // Don't show footer inside the slot machine or live table room (immersive pages)
+  const noFooter = ['/slot', '/live-tables/'].some((p) => location.pathname.startsWith(p));
+  return (
+    <>
+      <Outlet />
+      {!noFooter && <Footer />}
+    </>
+  );
+}
+
 function AppRoutes() {
   const navigate = useNavigate();
   const init = useAuthStore((s) => s.init);
@@ -94,21 +113,26 @@ function AppRoutes() {
 
   return (
     <Routes>
-      {/* Public routes */}
-      <Route path="/" element={<CasinoLobby onNavigateToSlot={(id?: string, title?: string, jackpotMode?: boolean) => navigate('/slot', { state: { id, title, jackpotMode } })} />} />
-      <Route path="/jackpots" element={<JackpotsPage />} />
-      <Route path="/vip" element={<VIPPage />} />
-      <Route path="/live-tables" element={<LiveTablesPage />} />
-      <Route path="/live-tables/:tableId" element={<LiveTableRoom />} />
-      <Route path="/auth/login" element={<LoginPage />} />
-      <Route path="/auth/signup" element={<SignUpPage />} />
-      <Route path="/auth/forgot-password" element={<ForgotPasswordPage />} />
-      <Route path="/auth/reset-password" element={<ResetPasswordPage />} />
-      <Route path="/auth/callback" element={<AuthCallbackPage />} />
+      {/* Public routes — wrapped in PublicLayout which adds the Footer */}
+      <Route element={<PublicLayout />}>
+        <Route path="/" element={<CasinoLobby onNavigateToSlot={(id?: string, title?: string, jackpotMode?: boolean) => navigate('/slot', { state: { id, title, jackpotMode } })} />} />
+        <Route path="/jackpots" element={<JackpotsPage />} />
+        <Route path="/vip" element={<VIPPage />} />
+        <Route path="/live-tables" element={<LiveTablesPage />} />
+        <Route path="/live-tables/:tableId" element={<LiveTableRoom />} />
+        <Route path="/auth/login" element={<LoginPage />} />
+        <Route path="/auth/signup" element={<SignUpPage />} />
+        <Route path="/auth/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/auth/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/auth/callback" element={<AuthCallbackPage />} />
+        <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+        <Route path="/terms" element={<TermsAndConditionsPage />} />
+        <Route path="/contact" element={<ContactPage />} />
 
-      {/* Protected routes — require active session */}
-      <Route element={<ProtectedRoute />}>
-        <Route path="/slot" element={<SlotMachinePage onBack={() => navigate('/')} />} />
+        {/* Protected routes — require active session */}
+        <Route element={<ProtectedRoute />}>
+          <Route path="/slot" element={<SlotMachinePage onBack={() => navigate('/')} />} />
+        </Route>
       </Route>
 
       {/* ── Admin routes ─────────────────────────────────────────── */}
@@ -155,6 +179,11 @@ function AppRoutes() {
             <Route path="/admin/fraud" element={<Suspense fallback={<AdminFallback />}><FraudPage /></Suspense>} />
             <Route path="/admin/audit" element={<Suspense fallback={<AdminFallback />}><AuditPage /></Suspense>} />
           </Route>
+
+          {/* Support Tickets — super_admin, support_agent */}
+          <Route element={<AdminAuthGuard requiredRoles={['super_admin','support_agent']} />}>
+            <Route path="/admin/support-tickets" element={<Suspense fallback={<AdminFallback />}><SupportTicketsPage /></Suspense>} />
+          </Route>
         </Route>
       </Route>
 
@@ -167,6 +196,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <BrowserRouter>
+        <ScrollToTop />
         <MusicManager />
         <AppRoutes />
       </BrowserRouter>

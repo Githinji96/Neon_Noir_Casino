@@ -113,8 +113,13 @@ export default function LiveTableRoom() {
   const chipValues = table ? getTableChipValues(table.minBet, table.maxBet) : [1, 5, 10, 50, 100, 500];
   if (import.meta.env.DEV) console.log('[LiveTableRoom] chips:', chipValues, 'minBet:', table?.minBet, 'maxBet:', table?.maxBet);
 
+  // Start the first round once on mount (status effect handles subsequent restarts)
+  const hasStartedRef = useRef(false);
   useEffect(() => {
-    startBettingPhase();
+    if (!hasStartedRef.current) {
+      hasStartedRef.current = true;
+      startBettingPhase();
+    }
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       if (nextRoundTimeoutRef.current) clearTimeout(nextRoundTimeoutRef.current);
@@ -136,12 +141,15 @@ export default function LiveTableRoom() {
       setTimer((t) => {
         if (t <= 1) {
           clearInterval(timerRef.current!);
+          timerRef.current = null;
           // Timer expired — only resolve if user placed a bet, otherwise skip round
           if (betPlacedRef.current) {
             resolveRound();
           } else {
             // No bet placed — just start next round after a short pause
-            setTimeout(startBettingPhase, 1000);
+            // Use nextRoundTimeoutRef so it gets cancelled properly on cleanup
+            if (nextRoundTimeoutRef.current) clearTimeout(nextRoundTimeoutRef.current);
+            nextRoundTimeoutRef.current = setTimeout(startBettingPhase, 1000);
           }
           return 0;
         }
@@ -171,6 +179,19 @@ export default function LiveTableRoom() {
 
       const newBalance = Math.round((balanceRef.current - bet + resolved.payout) * 100) / 100;
       setBalance(Math.max(0, newBalance));
+
+      // Record to spins table for GGR tracking (same as slot machine)
+      if (user?.id) {
+        supabase.from('spins').insert({
+          user_id: user.id,
+          game_id: `live_${gameType}`,
+          bet,
+          payout: resolved.payout,
+          is_free_spin: false,
+        }).then(({ error }) => {
+          if (error && import.meta.env.DEV) console.warn('[LiveTableRoom] spin insert failed:', error.message);
+        });
+      }
 
       const netChange = Math.round((resolved.payout - bet) * 100) / 100;
       const resultLabel = resolved.isPush

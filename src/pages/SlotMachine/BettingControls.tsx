@@ -7,6 +7,9 @@ export default function BettingControls() {
   const balance = useGameStore((s) => s.balance);
   const setBet = useGameStore((s) => s.setBet);
   const isSpinning = useGameStore((s) => s.isSpinning);
+  const jackpotMode = useGameStore((s) => s.jackpotMode);
+  const activeGameId = useGameStore((s) => s.activeGameId);
+  const isBetLocked = jackpotMode && activeGameId === 'cyber-strike-777';
 
   const [editing, setEditing] = useState(false);
   const [inputVal, setInputVal] = useState('');
@@ -58,7 +61,22 @@ export default function BettingControls() {
         Bet Amount
       </span>
 
-      {editing ? (
+      {/* Cyber Strike 777 jackpot mode: fixed KES 100 bet, locked */}
+      {isBetLocked ? (
+        <div className="flex flex-col items-center gap-1.5">
+          <div className="flex items-center gap-2 px-5 py-2 rounded-xl"
+            style={{ background: 'rgba(255,215,0,0.08)', border: '1px solid rgba(255,215,0,0.3)' }}>
+            <span className="text-xl sm:text-2xl font-orbitron text-neon-yellow font-bold"
+              style={{ textShadow: '0 0 8px rgba(255,215,0,0.6)' }}>
+              KES {bet.toFixed(2)}
+            </span>
+            <span className="text-[10px] font-orbitron text-yellow-600 tracking-widest">🔒 FIXED</span>
+          </div>
+          <p className="text-yellow-600/70 text-[10px] font-orbitron tracking-widest">
+            Jackpot games require KES 100 bet
+          </p>
+        </div>
+      ) : editing ? (
         <div className="flex flex-col items-center gap-2">
           <div className="flex items-center gap-2">
             <span className="font-orbitron text-neon-yellow font-bold text-lg">KES</span>
@@ -128,7 +146,7 @@ export default function BettingControls() {
         </div>
       )}
 
-      {!editing && insufficient && (
+      {!editing && !isBetLocked && insufficient && (
         <p className="text-red-400 text-xs font-orbitron text-center">
           INSUFFICIENT BALANCE
         </p>

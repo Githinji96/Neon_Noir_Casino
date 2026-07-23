@@ -75,22 +75,22 @@ export default function HeroSection({ onPlayNow }: HeroSectionProps) {
           </span>
         </motion.div>
 
-        {/* CTA Buttons */}
+        {/* CTA Buttons — full width on mobile, side by side on sm+ */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7, delay: 0.4, ease: 'easeOut' }}
-          className="flex flex-col sm:flex-row items-center justify-center gap-4"
+          className="flex flex-col items-center gap-3 w-full max-w-xs mx-auto sm:max-w-none sm:flex-row sm:justify-center"
         >
           <button
             onClick={onPlayNow}
-            className="btn-neon px-8 py-3 rounded-full font-orbitron font-bold text-sm tracking-widest uppercase"
+            className="btn-neon w-full sm:w-auto px-8 py-3 rounded-full font-orbitron font-bold text-sm tracking-widest uppercase"
           >
             PLAY NOW
           </button>
           <button
             onClick={() => setDetailsOpen(true)}
-            className="px-8 py-3 rounded-full font-orbitron font-bold text-sm tracking-widest uppercase border border-white text-white hover:bg-white/10 transition-colors duration-250"
+            className="w-full sm:w-auto px-8 py-3 rounded-full font-orbitron font-bold text-sm tracking-widest uppercase border border-white text-white hover:bg-white/10 transition-colors duration-250"
           >
             DETAILS
           </button>

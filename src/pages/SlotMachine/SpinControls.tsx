@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '../../store/gameStore';
 import { setMusicVolume, getMusicVolume } from '../../utils/jamendo';
@@ -10,6 +10,17 @@ export default function SpinControls() {
   const popupRef = useRef<HTMLDivElement>(null);
 
   const isDisabled = isSpinning || balance <= 0 || balance < bet;
+
+  // Stable animate objects — defined outside render so framer-motion doesn't
+  // restart the glow animation on every balance/state re-render.
+  const glowAnimate = useMemo(() => ({
+    boxShadow: [
+      '0 0 20px #FFD700, 0 0 40px #FFD70080',
+      '0 0 30px #FFD700, 0 0 60px #FFD700B0',
+      '0 0 20px #FFD700, 0 0 40px #FFD70080',
+    ],
+  }), []);
+  const disabledAnimate = useMemo(() => ({ boxShadow: 'none' }), []);
 
   // Close popup when clicking outside
   useEffect(() => {
@@ -42,17 +53,7 @@ export default function SpinControls() {
       <motion.button
         onClick={spin}
         disabled={isDisabled}
-        animate={
-          isDisabled
-            ? { boxShadow: 'none' }
-            : {
-                boxShadow: [
-                  '0 0 20px #FFD700, 0 0 40px #FFD70080',
-                  '0 0 30px #FFD700, 0 0 60px #FFD700B0',
-                  '0 0 20px #FFD700, 0 0 40px #FFD70080',
-                ],
-              }
-        }
+        animate={isDisabled ? disabledAnimate : glowAnimate}
         transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
         className={`w-24 h-24 rounded-full bg-neon-yellow text-black font-orbitron font-bold text-xl
           ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}

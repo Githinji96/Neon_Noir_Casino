@@ -14,6 +14,7 @@ interface AuthState {
   signOut: () => Promise<void>;
   syncBalance: (balance: number) => Promise<void>;
   recordWin: (winAmount: number, gameTitle: string) => Promise<void>;
+  refreshBalance: () => Promise<void>;
 }
 
 // Guard so init() only registers the onAuthStateChange listener once,
@@ -52,6 +53,50 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     if (listenerRegistered) return;
     listenerRegistered = true;
+
+    // Refresh balance whenever the player's tab regains focus —
+    // catches admin credits/debits that happened while the tab was hidden.
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        useAuthStore.getState().refreshBalance();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
+    // Poll every 30s as a fallback in case Realtime drops or
+    // the profiles table is not in the supabase_realtime publication.
+    // Only polls when the tab is visible to avoid unnecessary requests.
+    setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        useAuthStore.getState().refreshBalance();
+      }
+    }, 30_000);
+
+    // Realtime: sync balance when it changes in DB (e.g. admin update, deposit)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session?.user) return;
+      supabase
+        .channel(`profile-balance-${session.user.id}`)
+        .on('postgres_changes', {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'profiles',
+          filter: `id=eq.${session.user.id}`,
+        }, (payload) => {
+          const newBalance = (payload.new as { balance: number }).balance;
+          if (newBalance == null) return;
+          // Skip echo: if the balance matches what we already have locally,
+          // the change was triggered by our own syncBalance write — ignore it
+          // to avoid a re-render cascade on every spin.
+          const currentProfile = useAuthStore.getState().profile;
+          if (currentProfile?.balance === newBalance) return;
+          set((s) => ({ profile: s.profile ? { ...s.profile, balance: newBalance } : null }));
+          import('./gameStore').then(({ useGameStore }) => {
+            useGameStore.setState({ balance: newBalance });
+          });
+        })
+        .subscribe();
+    });
 
     supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_OUT' || !session?.user) {
@@ -146,11 +191,32 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   syncBalance: async (balance) => {
     const { user } = get();
     if (!user) return;
+    // Write to Supabase — don't call set() here; the realtime listener will
+    // echo this back only if the value actually changed externally.
     await supabase
       .from('profiles')
       .update({ balance, updated_at: new Date().toISOString() })
       .eq('id', user.id);
-    set((s) => ({ profile: s.profile ? { ...s.profile, balance } : null }));
+  },
+
+  refreshBalance: async () => {
+    const { user } = get();
+    if (!user) return;
+    try {
+      const { data } = await supabase
+        .from('profiles')
+        .select('balance')
+        .eq('id', user.id)
+        .single();
+      if (data?.balance == null) return;
+      const current = useAuthStore.getState().profile?.balance;
+      if (current === data.balance) return; // nothing changed
+      set((s) => ({ profile: s.profile ? { ...s.profile, balance: data.balance } : null }));
+      const { useGameStore } = await import('./gameStore');
+      useGameStore.setState({ balance: data.balance });
+    } catch {
+      // silent — best effort
+    }
   },
 
   recordWin: async (winAmount, gameTitle) => {
