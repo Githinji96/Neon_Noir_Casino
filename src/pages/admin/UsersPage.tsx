@@ -49,7 +49,7 @@ export default function UsersPage() {
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  function fetchUsers() {
     supabase
       .from('profiles')
       .select('id, username, balance, account_status, updated_at, admin_role')
@@ -59,6 +59,20 @@ export default function UsersPage() {
         setUsers((data as UserRow[]) ?? []);
         setLoading(false);
       });
+  }
+
+  useEffect(() => {
+    fetchUsers();
+
+    // Realtime: auto-update when any profile changes
+    const channel = supabase
+      .channel('admin_profiles_watch')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
+        fetchUsers();
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   return (

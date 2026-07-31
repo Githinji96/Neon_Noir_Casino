@@ -33,7 +33,10 @@ export type AuditActionType =
   | 'jackpot_config_update'
   | 'jackpot_force_reset'
   | 'bet_limit_apply'
-  | 'fraud_flag_dismiss';
+  | 'fraud_flag_dismiss'
+  | 'reset_player_wins'
+  | 'reset_player_bets'
+  | 'reset_player_stats';
 
 export interface AuditLogEntry {
   id: string;
@@ -113,14 +116,16 @@ interface AdminState {
   dismissAlert: (alertId: string) => Promise<void>;
 }
 
-export const useAdminStore = create<AdminState>((set) => ({
+export const useAdminStore = create<AdminState>((set, get) => ({
   adminProfile: null,
-  loading: true,  // start true — guard shows spinner until init() resolves
+  loading: false,  // start false — guard only shows spinner when actively loading
   alerts: [],
   unreadAlertCount: 0,
 
   init: async () => {
-    set({ loading: true });
+    // Don't reset adminProfile if already set — prevents flicker redirect
+    const already = get().adminProfile;
+    set({ loading: !already });
     try {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError) {
@@ -133,11 +138,32 @@ export const useAdminStore = create<AdminState>((set) => ({
         return;
       }
 
-      const { data: profile, error: profileError } = await supabase
+      const profilePromise = supabase
         .from('profiles')
         .select('id, username, admin_role')
         .eq('id', user.id)
         .single();
+
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Profile fetch timeout')), 10000)
+      );
+
+      let profile: { id: string; username: string; admin_role: string } | null = null;
+      let profileError: { message: string; code: string } | null = null;
+
+      try {
+        const result = await Promise.race([profilePromise, timeoutPromise]);
+        profile = result.data;
+        profileError = result.error as { message: string; code: string } | null;
+        if (profileError) {
+          console.error('[adminStore.init] profile query error:', profileError.code, profileError.message);
+        }
+        if (!profile && !profileError) {
+          console.warn('[adminStore.init] profile query returned null data with no error — RLS likely blocking the row');
+        }
+      } catch (e) {
+        profileError = { message: String(e), code: 'TIMEOUT' };
+      }
 
       if (profileError) {
         console.error('[adminStore.init] profile fetch error:', profileError.message, profileError.code);

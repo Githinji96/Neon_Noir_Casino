@@ -70,6 +70,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (state.isSpinning) return;
     if (state.balance < state.bet && state.freeSpinsRemaining === 0) return;
 
+    // Disable the button IMMEDIATELY before any computation so the UI responds
+    // to the click right away instead of waiting for all the sync work below.
+    set({ isSpinning: true });
+
     const isFreeSpins = state.freeSpinsRemaining > 0;
     let newBalance = state.balance;
     let newFreeSpinsRemaining = state.freeSpinsRemaining;
@@ -187,7 +191,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
 
     set({
-      isSpinning: true,
       balance: newBalance,
       reels: grid,
       winResults: wins,
@@ -226,6 +229,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const syms = getSymbolsForGame(gameId);
     const firstSym = syms[0]?.id ?? 'cherry';
     const idleGrid = Array.from({ length: 5 }, () => Array(3).fill(firstSym)) as SpinGrid;
-    set({ activeGameId: gameId, jackpotMode, winResults: [], isSpinning: false, autoplay: false, reels: idleGrid });
+    // Cyber Strike 777 requires a fixed KES 100 bet when played in jackpot mode
+    const fixedBet = jackpotMode && gameId === 'cyber-strike-777' ? { bet: 100 } : {};
+    set({ activeGameId: gameId, jackpotMode, winResults: [], isSpinning: false, autoplay: false, reels: idleGrid, ...fixedBet });
   },
 }));

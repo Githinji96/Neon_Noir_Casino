@@ -94,6 +94,15 @@ CREATE POLICY "Admins can read all leaderboard"
     public.has_any_admin_role(ARRAY['super_admin','finance_admin','support_agent','game_manager'])
   );
 
+-- Super admins can delete leaderboard entries (for stat resets)
+DROP POLICY IF EXISTS "Super admins can delete leaderboard" ON public.leaderboard;
+CREATE POLICY "Super admins can delete leaderboard"
+  ON public.leaderboard FOR DELETE
+  USING (
+    public.has_any_admin_role(ARRAY['super_admin'])
+  );
+  );
+
 -- ============================================================
 -- 2. ADMIN AUDIT LOGS (immutable - no UPDATE/DELETE allowed)
 -- ============================================================

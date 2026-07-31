@@ -46,8 +46,8 @@ export default function AdminAuthGuard({ requiredRoles }: AdminAuthGuardProps) {
     };
   }, [navigate]);
 
-  // Show spinner while loading (unless safety timeout hit)
-  if (loading && !timedOut) {
+  // Show spinner only when loading AND no profile yet
+  if (loading && !adminProfile && !timedOut) {
     return (
       <div className="min-h-screen bg-gray-950 flex items-center justify-center">
         <div className="w-10 h-10 rounded-full border-4 border-yellow-400 border-t-transparent animate-spin" />

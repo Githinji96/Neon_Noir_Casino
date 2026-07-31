@@ -18,20 +18,20 @@ const SUPABASE_FUNCTIONS_URL = import.meta.env.VITE_SUPABASE_URL.replace(
 
 export default function DepositModal({ isOpen, onClose, onPolling }: DepositModalProps) {
   const { user, profile } = useAuthStore();
-  const [phone, setPhone] = useState('254');
+  const [phone, setPhone] = useState('');
   const [amount, setAmount] = useState('');
   const [status, setStatus] = useState<Status>('idle');
   const [message, setMessage] = useState('');
 
   useEffect(() => {
     if (isOpen) {
-      // Pre-fill phone from profile if available
+      // Pre-fill phone digits (without country code) from profile if available
       const savedPhone = profile?.phone ?? '';
       const normalized = savedPhone.replace(/\D/g, '');
       const digits = normalized.startsWith('254') ? normalized.slice(3)
-                   : normalized.startsWith('0') ? normalized.slice(1)
+                   : normalized.startsWith('0')   ? normalized.slice(1)
                    : normalized;
-      setPhone('254' + (digits || ''));
+      setPhone(digits); // store only the 9 digits; prepend 254 on submit
       setAmount('');
       setStatus('idle');
       setMessage('');
@@ -39,7 +39,7 @@ export default function DepositModal({ isOpen, onClose, onPolling }: DepositModa
   }, [isOpen, profile?.phone]);
 
   const validate = (p: string): string | null => {
-    if (!/^2547\d{8}$/.test(p)) return `Invalid number (got: ${p}). Use 07XXXXXXXX or 7XXXXXXXX`;
+    if (!/^2547\d{8}$/.test(p)) return `Invalid number. Use format 07XXXXXXXX or 7XXXXXXXX`;
     const amt = Number(amount);
     if (!amt || amt < 10) return 'Minimum deposit is KES 10';
     if (amt > 150000) return 'Maximum deposit is KES 150,000';
@@ -48,10 +48,13 @@ export default function DepositModal({ isOpen, onClose, onPolling }: DepositModa
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Normalize phone before validation — ensure it's 2547XXXXXXXX
-    const normalizedPhone = phone.replace(/\D/g, '');
-    const finalPhone = normalizedPhone.startsWith('254') ? normalizedPhone : '254' + normalizedPhone;
+
+    // Always assemble a clean 2547XXXXXXXX from whatever was typed
+    const raw = phone.replace(/\D/g, '');
+    const digits = raw.startsWith('254') ? raw.slice(3)
+                 : raw.startsWith('0')   ? raw.slice(1)
+                 : raw;
+    const finalPhone = '254' + digits;
     
     const err = validate(finalPhone);
     if (err) { setStatus('error'); setMessage(err); return; }
@@ -185,15 +188,12 @@ export default function DepositModal({ isOpen, onClose, onPolling }: DepositModa
                   </span>
                   <input
                     type="tel"
-                    value={phone.startsWith('254') ? phone.slice(3) : phone}
+                    value={phone}
                     onChange={(e) => {
-                      // strip non-digits
                       let raw = e.target.value.replace(/\D/g, '');
-                      // if user typed 07... convert to 7...
-                      if (raw.startsWith('0')) raw = raw.slice(1);
-                      // cap at 9 digits (7XXXXXXXX)
-                      raw = raw.slice(0, 9);
-                      setPhone('254' + raw);
+                      if (raw.startsWith('254')) raw = raw.slice(3);
+                      if (raw.startsWith('0'))   raw = raw.slice(1);
+                      setPhone(raw.slice(0, 9));
                     }}
                     placeholder="7XXXXXXXX"
                     disabled={isLoading}

@@ -46,11 +46,11 @@ export function resolveRoulette(
     return { outcome: `🟢 Zero (0)`, detail: 'Straight up — 36:1!', payout, won: true, isPush: false, isBigWin: true, rtpContribution: payout / bet };
   }
 
-  // Volatility-driven big win (e.g. player bet on exact number)
+  // Volatility-driven big win (e.g. player bet on exact number) — capped at 10× for roulette
   const volMod = VOLATILITY_MODIFIERS[volatility];
   if (secureRandom() < volMod.bigWinChance) {
-    const payout = Math.round(bet * volMod.bigWinMultiplier);
-    return { outcome: `${color === 'Red' ? '🔴' : '⚫'} ${num}`, detail: `Lucky number — ${volMod.bigWinMultiplier}:1!`, payout, won: true, isPush: false, isBigWin: true, rtpContribution: payout / bet };
+    const payout = Math.round(bet * Math.min(volMod.bigWinMultiplier, 10));
+    return { outcome: `${color === 'Red' ? '🔴' : '⚫'} ${num}`, detail: `Lucky number — big win!`, payout, won: true, isPush: false, isBigWin: true, rtpContribution: payout / bet };
   }
 
   // Standard even-money outcome using effective probability
@@ -94,10 +94,10 @@ export function resolveBlackjack(
     return { outcome: 'Dealer Blackjack', detail: 'Dealer has natural 21', payout: 0, won: false, isPush: false, isBigWin: false, rtpContribution: 0 };
   }
 
-  // Volatility big win (double down / split scenario)
-  if (secureRandom() < volMod.bigWinChance) {
-    const payout = Math.round(bet * volMod.bigWinMultiplier);
-    return { outcome: '🎉 Big Win!', detail: 'Perfect double down', payout, won: true, isPush: false, isBigWin: true, rtpContribution: payout / bet };
+  // Volatility big win (double down / split scenario) — capped at 2.5× for blackjack realism
+  if (secureRandom() < volMod.bigWinChance * 0.5) {
+    const payout = Math.round(bet * Math.min(volMod.bigWinMultiplier, 2.5));
+    return { outcome: '🎉 Double Down Win!', detail: 'Perfect double down — 2.5:1', payout, won: true, isPush: false, isBigWin: true, rtpContribution: payout / bet };
   }
 
   // Standard win/loss using effective probability

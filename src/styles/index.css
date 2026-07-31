@@ -1,4 +1,4 @@
-@tailwind base;
+﻿@tailwind base;
 @tailwind components;
 @tailwind utilities;
 
@@ -56,11 +56,13 @@ body {
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
 }
 
 #root {
   min-height: 100vh;
   background: linear-gradient(135deg, #0a0a0f 0%, #12082a 50%, #0d0d1a 100%);
+  overflow-x: hidden;
 }
 
 /* ── Utility Classes ── */
@@ -247,4 +249,29 @@ body {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* -- Hide scrollbar utility -- */
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* -- Category tabs scroll strip -- */
+.tabs-scroll-strip {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 68, 102, 0.6) rgba(255, 255, 255, 0.05);
+}
+.tabs-scroll-strip::-webkit-scrollbar {
+  height: 3px;
+}
+.tabs-scroll-strip::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+}
+.tabs-scroll-strip::-webkit-scrollbar-thumb {
+  background: rgba(255, 68, 102, 0.6);
+  border-radius: 2px;
 }

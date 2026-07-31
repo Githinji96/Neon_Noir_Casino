@@ -151,10 +151,26 @@ export default function SignUpPage() {
             className="w-4 h-4 mt-0.5 rounded accent-yellow-400 shrink-0"
           />
           <span className="text-gray-400 text-xs leading-relaxed">
-            I agree to the{' '}
-            <span className="underline cursor-pointer" style={{ color: '#FFD700' }}>Terms & Conditions</span>
+            I have read and agree to the{' '}
+            <Link
+              to="/terms"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:opacity-80 transition-opacity"
+              style={{ color: '#FFD700' }}
+            >
+              Terms & Conditions
+            </Link>
             {' '}and{' '}
-            <span className="underline cursor-pointer" style={{ color: '#FFD700' }}>Privacy Policy</span>
+            <Link
+              to="/privacy-policy"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:opacity-80 transition-opacity"
+              style={{ color: '#FFD700' }}
+            >
+              Privacy Policy
+            </Link>
           </span>
         </label>
         {errors.terms && (

@@ -47,9 +47,9 @@ export default function LiveTablesPage() {
       <ParticleBackground />
       <Navbar />
 
-      <main className="px-3 sm:px-6 pb-24 md:pb-10">
+      <main className="pb-24 md:pb-10">
         {/* Header */}
-        <div className="pt-10 pb-6">
+        <div className="pt-10 pb-6 px-3 sm:px-6">
           <h1 className="font-orbitron font-bold text-2xl md:text-4xl tracking-widest text-white uppercase"
             style={{ textShadow: '0 0 20px rgba(255,100,100,0.5)' }}>
             Live <span style={{ color: '#ff4466' }}>Casino</span> Tables
@@ -65,60 +65,68 @@ export default function LiveTablesPage() {
           </div>
         </div>
 
-        {/* Category tabs */}
-        <div className="flex gap-2 overflow-x-auto pb-2 mb-6" style={{ scrollbarWidth: 'none' }}>
-          {GAME_CATEGORIES.map((cat) => (
-            <button
-              key={cat.id}
-              onClick={() => setActiveCategory(cat.id)}
-              className={`shrink-0 flex items-center gap-2 px-4 py-2 rounded-full font-orbitron text-xs tracking-widest transition-all duration-200 ${
-                activeCategory === cat.id
-                  ? 'text-black'
-                  : 'text-gray-400 hover:text-white border border-white/10 hover:border-white/30'
-              }`}
-              style={activeCategory === cat.id ? {
-                background: 'linear-gradient(135deg, #ff4466, #aa44ff)',
-                boxShadow: '0 0 16px rgba(255,68,102,0.4)',
-              } : {}}
-            >
-              <span>{cat.icon}</span>
-              {cat.label}
-            </button>
-          ))}
+        {/* Category tabs — scrollable strip pinned to full viewport width so overflow-x-hidden
+            on a parent can't clip it. Uses a thin neon scrollbar on mobile. */}
+        <div
+          className="tabs-scroll-strip mb-6"
+          style={{ width: '100vw', marginLeft: 'calc(-1 * ((100vw - 100%) / 2))', overflowX: 'auto' }}
+        >
+          <div className="flex gap-2 pb-2" style={{ paddingLeft: '12px', paddingRight: '12px', width: 'max-content', minWidth: '100vw' }}>
+            {GAME_CATEGORIES.map((cat) => (
+              <button
+                key={cat.id}
+                onClick={() => setActiveCategory(cat.id)}
+                className={`shrink-0 flex items-center gap-2 px-4 py-2 rounded-full font-orbitron text-xs tracking-widest transition-all duration-200 ${
+                  activeCategory === cat.id
+                    ? 'text-black'
+                    : 'text-gray-400 hover:text-white border border-white/10 hover:border-white/30'
+                }`}
+                style={activeCategory === cat.id ? {
+                  background: 'linear-gradient(135deg, #ff4466, #aa44ff)',
+                  boxShadow: '0 0 16px rgba(255,68,102,0.4)',
+                } : {}}
+              >
+                <span>{cat.icon}</span>
+                {cat.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Alert */}
-        <AnimatePresence>
-          {alertMsg && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="mb-4 flex items-center justify-between gap-3 px-4 py-3 rounded-xl text-sm"
-              style={{ background: 'rgba(255,68,68,0.15)', border: '1px solid rgba(255,68,68,0.3)', color: '#ff8888' }}
-            >
-              <span>⚠️ {alertMsg}</span>
-              <button onClick={() => setAlertMsg('')} className="text-gray-400 hover:text-white text-lg leading-none">×</button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Table grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          <AnimatePresence mode="popLayout">
-            {filtered.map((table) => (
+        <div className="px-3 sm:px-6">
+          <AnimatePresence>
+            {alertMsg && (
               <motion.div
-                key={table.id}
-                layout
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ duration: 0.2 }}
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="mb-4 flex items-center justify-between gap-3 px-4 py-3 rounded-xl text-sm"
+                style={{ background: 'rgba(255,68,68,0.15)', border: '1px solid rgba(255,68,68,0.3)', color: '#ff8888' }}
               >
-                <TableCard table={table} onJoin={handleJoin} />
+                <span>⚠️ {alertMsg}</span>
+                <button onClick={() => setAlertMsg('')} className="text-gray-400 hover:text-white text-lg leading-none">×</button>
               </motion.div>
-            ))}
+            )}
           </AnimatePresence>
+
+          {/* Table grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            <AnimatePresence mode="popLayout">
+              {filtered.map((table) => (
+                <motion.div
+                  key={table.id}
+                  layout
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <TableCard table={table} onJoin={handleJoin} />
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
         </div>
       </main>
 

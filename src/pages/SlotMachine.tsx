@@ -32,7 +32,8 @@ export default function SlotMachinePage({ onBack }: SlotMachinePageProps) {
   const navigate = useNavigate();
   const gameId      = (location.state as { id?: string; title?: string; jackpotMode?: boolean } | null)?.id ?? 'cyber-strike-777';
   const gameTitle   = (location.state as { id?: string; title?: string; jackpotMode?: boolean } | null)?.title ?? 'Cyber Strike 777';
-  const jackpotMode = (location.state as { id?: string; title?: string; jackpotMode?: boolean } | null)?.jackpotMode ?? false;
+  // Cyber Strike 777 always runs in jackpot mode (fixed KES 100 bet)
+  const jackpotMode = gameId === 'cyber-strike-777' ? true : (location.state as { id?: string; title?: string; jackpotMode?: boolean } | null)?.jackpotMode ?? false;
 
   // If no onBack prop (navigated directly e.g. from jackpots page), go back in history or to lobby
   const handleBack = onBack ?? (() => {
@@ -115,13 +116,25 @@ export default function SlotMachinePage({ onBack }: SlotMachinePageProps) {
   }, [isSpinning, winResults, soundEnabled]);
 
   // Sync balance + record wins to Supabase after each spin
+  // Debounced: only writes after 2s of no new spins to avoid hammering Supabase
+  // on every spin and triggering the realtime echo loop back into the store.
+  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    if (isSpinning)
-       return;
-    syncBalance(balance);
+    if (isSpinning) return;
+
+    const balanceSnapshot = balance;
     const lastWin = useGameStore.getState().lastWin;
-    if (lastWin > 0) recordWin(lastWin, gameTitle);
-  }, [isSpinning]);
+
+    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    syncTimerRef.current = setTimeout(() => {
+      syncBalance(balanceSnapshot);
+      if (lastWin > 0) recordWin(lastWin, gameTitle);
+    }, 2000);
+
+    return () => {
+      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    };
+  }, [isSpinning, balance]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Free spins fanfare
   useEffect(() => {

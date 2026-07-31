@@ -117,8 +117,14 @@ export const jackpotEngine = {
     // 3. Record bet for RTP tracking
     recordJackpotSpin(betAmount);
 
-    // 4. Trigger check — only jackpots assigned to the active game can trigger
+    // 4. Trigger check — ONLY when launched from jackpot section (jackpotMode: true)
+    // Games accessed via Popular Choices, New Arrivals, or direct URL cannot trigger jackpots
     let win: JackpotWinEvent | null = null;
+
+    if (!input.jackpotMode) {
+      // Contributions accumulate but no win can trigger
+      return { contributions, win: null };
+    }
 
     for (const cfg of JACKPOT_CONFIGS) {
       // Skip jackpots not belonging to the current game

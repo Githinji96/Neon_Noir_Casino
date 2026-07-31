@@ -14,8 +14,9 @@ const PAGE_TITLES: Record<string, string> = {
   '/admin/jackpots':    'Jackpots',
   '/admin/live-tables': 'Live Tables',
   '/admin/analytics':   'Analytics',
-  '/admin/fraud':       'Fraud & Risk',
-  '/admin/audit':       'Audit Logs',
+  '/admin/fraud':           'Fraud & Risk',
+  '/admin/support-tickets': 'Support Tickets',
+  '/admin/audit':           'Audit Logs',
 };
 
 function deriveTitle(pathname: string): string {

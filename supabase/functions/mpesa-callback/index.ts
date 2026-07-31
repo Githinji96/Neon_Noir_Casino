@@ -1,73 +1,103 @@
 // Supabase Edge Function: M-Pesa Callback Handler
 // Deploy: supabase functions deploy mpesa-callback
-// This URL is what you set as MPESA_CALLBACK_URL
+// Set MPESA_CALLBACK_URL to: https://<project>.supabase.co/functions/v1/mpesa-callback
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 Deno.serve(async (req) => {
+  // Safaricom always expects HTTP 200. Never return 4xx/5xx to Daraja.
   try {
     const body = await req.json();
-    const callback = body?.Body?.stkCallback;
+    console.log('[mpesa-callback] Raw body:', JSON.stringify(body));
 
+    const callback = body?.Body?.stkCallback;
     if (!callback) {
-      return Response.json({ error: 'Invalid callback' }, { status: 400 });
+      console.error('[mpesa-callback] No stkCallback in body');
+      return Response.json({ ResultCode: 0, ResultDesc: 'Accepted' });
     }
 
-    const checkoutRequestId = callback.CheckoutRequestID;
-    const resultCode        = callback.ResultCode; // 0 = success
-    const resultDesc        = callback.ResultDesc;
+    const checkoutRequestId = callback.CheckoutRequestID as string;
+    const resultCode        = Number(callback.ResultCode);
+    const resultDesc        = callback.ResultDesc as string;
+
+    console.log('[mpesa-callback] checkoutRequestId:', checkoutRequestId, 'resultCode:', resultCode);
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     );
 
     if (resultCode === 0) {
-      // Extract M-Pesa receipt and amount from callback metadata
+      // Extract metadata from callback
       const items: { Name: string; Value: string | number }[] =
         callback.CallbackMetadata?.Item ?? [];
-      const get = (name: string) => items.find((i) => i.Name === name)?.Value;
+      const getMeta = (name: string) => items.find((i) => i.Name === name)?.Value;
 
-      const mpesaReceipt = get('MpesaReceiptNumber') as string;
-      const amount       = Number(get('Amount'));
+      const mpesaReceipt = getMeta('MpesaReceiptNumber') as string | undefined;
+      const paidAmount   = Number(getMeta('Amount') ?? 0);
 
-      // Mark transaction as success
-      const { data: txn } = await supabase
+      console.log('[mpesa-callback] Payment success. Receipt:', mpesaReceipt, 'Amount:', paidAmount);
+
+      // Guard against double-credit: only update if still pending
+      const { data: txn, error: txnErr } = await supabase
         .from('transactions')
-        .update({ status: 'success', mpesa_receipt: mpesaReceipt })
+        .update({
+          status: 'success',
+          ...(mpesaReceipt ? { mpesa_receipt: mpesaReceipt } : {}),
+        })
         .eq('checkout_request_id', checkoutRequestId)
+        .eq('status', 'pending')    // ← idempotency guard
         .select('user_id, amount')
         .single();
 
+      if (txnErr) {
+        console.warn('[mpesa-callback] Transaction update issue (may be already credited):', txnErr.message);
+        // Not a hard failure — may mean query endpoint already credited this
+        return Response.json({ ResultCode: 0, ResultDesc: 'Accepted' });
+      }
+
       if (txn) {
-        // Credit user balance in profiles table
-        const { data: profile } = await supabase
+        // Use the confirmed paid amount from callback; fall back to DB amount
+        const creditAmount = paidAmount > 0 ? paidAmount : txn.amount;
+
+        const { data: profile, error: profileErr } = await supabase
           .from('profiles')
           .select('balance')
           .eq('id', txn.user_id)
           .single();
 
-        if (profile) {
-          const newBalance = (profile.balance ?? 0) + (amount || txn.amount);
-          await supabase
+        if (profileErr) {
+          console.error('[mpesa-callback] Profile fetch failed:', profileErr.message);
+        } else if (profile) {
+          const newBalance = Math.round(((profile.balance ?? 0) + creditAmount) * 100) / 100;
+          const { error: updateErr } = await supabase
             .from('profiles')
             .update({ balance: newBalance, updated_at: new Date().toISOString() })
             .eq('id', txn.user_id);
+
+          if (updateErr) {
+            console.error('[mpesa-callback] Balance update failed:', updateErr.message);
+          } else {
+            console.log(`[mpesa-callback] Credited KES ${creditAmount} to user ${txn.user_id}. New balance: ${newBalance}`);
+          }
         }
       }
     } else {
-      // Payment failed or cancelled
+      // Payment failed or was cancelled by user
+      console.log(`[mpesa-callback] Payment not successful: ${resultDesc} (code ${resultCode})`);
       await supabase
         .from('transactions')
         .update({ status: 'failed' })
-        .eq('checkout_request_id', checkoutRequestId);
-
-      console.log(`[mpesa-callback] Payment failed: ${resultDesc}`);
+        .eq('checkout_request_id', checkoutRequestId)
+        .eq('status', 'pending');
     }
 
+    // Always respond 200 with this exact shape — Safaricom retries if we don't
     return Response.json({ ResultCode: 0, ResultDesc: 'Accepted' });
+
   } catch (err) {
-    console.error('[mpesa-callback]', err);
-    return Response.json({ ResultCode: 0, ResultDesc: 'Accepted' }); // always 200 to Safaricom
+    console.error('[mpesa-callback] Unhandled error:', err);
+    // Still return 200 so Safaricom doesn't retry endlessly
+    return Response.json({ ResultCode: 0, ResultDesc: 'Accepted' });
   }
 });

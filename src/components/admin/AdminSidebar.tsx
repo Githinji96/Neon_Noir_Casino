@@ -19,8 +19,9 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Jackpots',     path: '/admin/jackpots',      icon: '🎯', roles: ['super_admin', 'game_manager'] },
   { label: 'Live Tables',  path: '/admin/live-tables',   icon: '📡', roles: ['super_admin', 'game_manager'] },
   { label: 'Analytics',    path: '/admin/analytics',     icon: '📉', roles: ['super_admin', 'finance_admin'] },
-  { label: 'Fraud & Risk', path: '/admin/fraud',         icon: '🚨', roles: ['super_admin'] },
-  { label: 'Audit Logs',   path: '/admin/audit',         icon: '📜', roles: ['super_admin'] },
+  { label: 'Fraud & Risk',       path: '/admin/fraud',           icon: '🚨', roles: ['super_admin'] },
+  { label: 'Support Tickets',   path: '/admin/support-tickets', icon: '🎫', roles: ['super_admin','support_agent'] },
+  { label: 'Audit Logs',        path: '/admin/audit',           icon: '📜', roles: ['super_admin'] },
 ];
 
 interface AdminSidebarProps {
