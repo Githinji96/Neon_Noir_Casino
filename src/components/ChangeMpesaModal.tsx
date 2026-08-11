@@ -376,7 +376,7 @@ export default function ChangeMpesaModal({ isOpen, onClose, onSuccess }: ChangeM
                       name="mpesa-password-field"
                       value={password}
                       onChange={(e) => { setPassword(e.target.value); setError(''); }}
-                      placeholder="Enter your password"
+                      placeholder="Enter your password to confirm"
                       disabled={loading}
                       aria-required="true"
                       aria-invalid={error && error.toLowerCase().includes('password') ? 'true' : 'false'}
