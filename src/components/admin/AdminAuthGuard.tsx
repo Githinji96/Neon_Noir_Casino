@@ -17,10 +17,10 @@ export default function AdminAuthGuard({ requiredRoles }: AdminAuthGuardProps) {
   const [timedOut, setTimedOut] = useState(false);
 
   // Always revalidate admin access on mount so stale store state cannot bypass role checks.
-  // Safety timeout: if init() takes > 6s, unblock and treat as unauthenticated.
+  // Safety timeout: if init() takes > 5s, unblock and treat as unauthenticated.
   useEffect(() => {
     void init();
-    const t = setTimeout(() => setTimedOut(true), 6000);
+    const t = setTimeout(() => setTimedOut(true), 5500);
     return () => clearTimeout(t);
   }, [init]);
 
@@ -46,8 +46,9 @@ export default function AdminAuthGuard({ requiredRoles }: AdminAuthGuardProps) {
     };
   }, [navigate]);
 
-  // Show spinner only when loading AND no profile yet
-  if (loading && !adminProfile && !timedOut) {
+  // Show spinner while loading (init not yet complete)
+  // timedOut safety net unblocks after 5.5s in case init hangs
+  if (loading && !timedOut) {
     return (
       <div className="min-h-screen bg-gray-950 flex items-center justify-center">
         <div className="w-10 h-10 rounded-full border-4 border-yellow-400 border-t-transparent animate-spin" />

@@ -104,7 +104,11 @@ export default function AdminLoginPage() {
         return;
       }
 
-      await useAdminStore.getState().init();
+      // Profile is set directly — no need to call init() again
+      useAdminStore.setState({
+        adminProfile: { id: profile!.id, username: profile!.username ?? '', admin_role: role },
+        loading: false,
+      });
       navigate('/admin/dashboard');
     } catch (err) {
       setError(getAuthErrorMessage(err));

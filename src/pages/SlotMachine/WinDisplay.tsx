@@ -23,15 +23,20 @@ export default function WinDisplay() {
     `KES ${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   return (
-    <div className="relative w-full">
-      <div className="flex justify-between items-center px-4 py-2 bg-gray-900/80 rounded-lg border border-gray-700">
+    <div className="relative w-full shrink-0">
+      <div
+        className="flex justify-between items-center px-4 py-3 rounded-lg border border-gray-700/60"
+        style={{ background: 'rgba(13,13,26,0.9)' }}
+      >
         <div className="flex flex-col items-start">
-          <span className="text-xs text-gray-400 uppercase tracking-widest">Balance</span>
-          <span className="font-orbitron text-white text-lg">{fmt(balance)}</span>
+          <span className="text-[10px] text-gray-500 uppercase tracking-widest font-orbitron">Balance</span>
+          <span className="font-orbitron text-white text-base font-bold leading-tight">{fmt(balance)}</span>
         </div>
+        {/* Vertical divider */}
+        <div className="w-px self-stretch bg-gray-700/50 mx-2" />
         <div className="flex flex-col items-end">
-          <span className="text-xs text-gray-400 uppercase tracking-widest">Last Payout</span>
-          <span className={`font-orbitron text-lg ${lastWin > bet ? 'text-green-400' : lastWin > 0 ? 'text-yellow-300' : 'text-white/30'}`}>
+          <span className="text-[10px] text-gray-500 uppercase tracking-widest font-orbitron">Last Payout</span>
+          <span className={`font-orbitron text-base font-bold leading-tight ${lastWin > bet ? 'text-green-400' : lastWin > 0 ? 'text-yellow-300' : 'text-gray-600'}`}>
             {fmt(lastWin)}
           </span>
         </div>

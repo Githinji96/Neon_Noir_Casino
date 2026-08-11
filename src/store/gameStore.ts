@@ -6,9 +6,23 @@ import { recordSpin, getSessionStats, setActiveGameRTP } from '../logic/rtpContr
 import { BET_LADDER, DEFAULT_BET } from '../config/betLadder';
 import { GAME_CONFIG } from '../config/gameConfig';
 import { getSymbolsForGame } from '../config/symbols';
-import { JACKPOT_GAME_IDS, POPULAR_GAME_IDS } from '../config/mockData';
+import { JACKPOT_GAME_IDS } from '../config/mockData';
 import { useJackpotStore } from './jackpotStore';
 import { supabase } from '../lib/supabase';
+
+// Spin insert batch buffer — flushes to DB every 10 spins instead of 1-per-spin
+// Reduces DB writes by 10× at scale. Flushed on tab close via beforeunload.
+const _spinBatch: { user_id: string; game_id: string; bet: number; payout: number; is_free_spin: boolean }[] = [];
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', () => {
+    if (_spinBatch.length > 0) {
+      const batch = _spinBatch.splice(0);
+      // Use sendBeacon for reliable fire-and-forget on page close
+      const url = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/spins`;
+      navigator.sendBeacon(url, JSON.stringify(batch));
+    }
+  });
+}
 
 // Lazy ref to authStore to avoid circular dependency
 let _getAuthUser: (() => string | null) | null = null;
@@ -47,7 +61,7 @@ interface GameState {
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
-  balance: 1000.00,
+  balance: 0.00,
   bet: DEFAULT_BET,
   reels: Array.from({ length: 5 }, () => Array(3).fill('bell')) as SpinGrid, // safe initial grid, replaced on first spin
   freeSpinsRemaining: 0,
@@ -109,17 +123,28 @@ export const useGameStore = create<GameState>((set, get) => ({
     const grid = generateSpin();
     const { wins, scatterCount, triggerFreeSpins } = evaluatePaylines(grid);
 
-    // Near-miss detection (only on jackpot-linked games, only on losing spins)
-    // Exclude popular choice games from near-miss notifications
-    // Only check for near-misses when the active game is jackpot-enabled or jackpotMode is true
-    if (!isFreeSpins && jackpotWinAmount === 0 && (state.jackpotMode || JACKPOT_GAME_IDS.has(state.activeGameId)) && !POPULAR_GAME_IDS.has(state.activeGameId)) {
+    // Near-miss detection — only on jackpot games, only on non-winning spins,
+    // only after jackpot win check (jackpotWinAmount === 0 guards against
+    // showing "near miss" when the player actually won the jackpot)
+    if (!isFreeSpins && jackpotWinAmount === 0 && JACKPOT_GAME_IDS.has(state.activeGameId)) {
       import('../logic/nearMissDetector').then(({ detectNearMiss }) => {
         import('./nearMissStore').then(({ useNearMissStore }) => {
           const nearMissStore = useNearMissStore.getState();
           nearMissStore.recordJackpotBet();
-          const result = detectNearMiss(grid);
+
+          // Only evaluate if the player is eligible (cooldowns satisfied)
+          if (!nearMissStore.isEligible()) return;
+
+          const result = detectNearMiss(grid, state.activeGameId);
           if (result.isNearMiss) {
-            nearMissStore.showNotification(result.message);
+            nearMissStore.showNotification(result.message, result.gameName);
+            nearMissStore.logEvent({
+              gameId: state.activeGameId,
+              jackpotSymbol: result.jackpotSymbol ?? '',
+              matchedPositions: result.matchedPositions,
+              requiredPositions: result.requiredPositions,
+              timestamp: Date.now(),
+            });
           }
         });
       });
@@ -159,18 +184,22 @@ export const useGameStore = create<GameState>((set, get) => ({
           }
         });
 
-        // Fire-and-forget: persist spin to Supabase for real GGR/RTP analytics
-        supabase.from('spins').insert({
-          user_id: userId,
-          game_id: state.activeGameId,
-          bet: state.bet,
-          payout: totalPayout,
-          is_free_spin: false,
-        }).then(({ error }) => {
-          if (error && import.meta.env.DEV) {
-            console.warn('[gameStore] spin insert failed:', error.message);
+        // Fire-and-forget: persist spin to Supabase — batched every 10 spins
+        // to reduce DB write volume at scale (10K users × 1 spin/s = 10K writes/s unbatched)
+        if (userId) {
+          const BATCH_SIZE = 10;
+          const spinBuffer = (useGameStore as unknown as { _spinBuffer?: typeof _spinBatch })._spinBuffer;
+          if (!spinBuffer) {
+            (useGameStore as unknown as { _spinBuffer: typeof _spinBatch })._spinBuffer = _spinBatch;
           }
-        });
+          _spinBatch.push({ user_id: userId, game_id: state.activeGameId, bet: state.bet, payout: totalPayout, is_free_spin: false });
+          if (_spinBatch.length >= BATCH_SIZE) {
+            const batch = _spinBatch.splice(0, BATCH_SIZE);
+            supabase.from('spins').insert(batch).then(({ error }) => {
+              if (error && import.meta.env.DEV) console.warn('[gameStore] batch insert failed:', error.message);
+            });
+          }
+        }
       }
     }
 

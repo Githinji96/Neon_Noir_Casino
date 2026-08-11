@@ -32,17 +32,18 @@ export default function LiveTableRoom() {
   const [lastBet, setLastBet] = useState(0);
   const [timer, setTimer] = useState(15);
   const [sessionRTP, setSessionRTP] = useState(0);
-  const [log, setLog] = useState<string[]>([]);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const nextRoundTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const balanceRef = useRef(balance);
   const chipsRef = useRef(chips);
+  const tableRef = useRef(table);
   // tracks whether the user has explicitly clicked PLACE BET this round
   const betPlacedRef = useRef(false);
 
   useEffect(() => { balanceRef.current = balance; }, [balance]);
   useEffect(() => { chipsRef.current = chips; }, [chips]);
+  useEffect(() => { tableRef.current = table; }, [table]);
 
   const balanceMountedRef = useRef(false);
   useEffect(() => {
@@ -126,8 +127,12 @@ export default function LiveTableRoom() {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function startBettingPhase() {
-    if (table?.status !== 'live') return;
+  function startBettingPhase(fromTimeout = false) {
+    // When called from a timeout (auto-advance), don't block on status —
+    // the table ref may be transiently stale. Only block manual re-starts
+    // when status is explicitly 'waiting'.
+    if (!fromTimeout && tableRef.current?.status === 'waiting') return;
+
     // Reset everything for a fresh round
     betPlacedRef.current = false;
     chipsRef.current = 0;
@@ -149,7 +154,7 @@ export default function LiveTableRoom() {
             // No bet placed — just start next round after a short pause
             // Use nextRoundTimeoutRef so it gets cancelled properly on cleanup
             if (nextRoundTimeoutRef.current) clearTimeout(nextRoundTimeoutRef.current);
-            nextRoundTimeoutRef.current = setTimeout(startBettingPhase, 1000);
+            nextRoundTimeoutRef.current = setTimeout(() => startBettingPhase(true), 1000);
           }
           return 0;
         }
@@ -167,7 +172,7 @@ export default function LiveTableRoom() {
     nextRoundTimeoutRef.current = setTimeout(() => {
       const bet = chipsRef.current;
       if (bet <= 0) {
-        nextRoundTimeoutRef.current = setTimeout(startBettingPhase, 1000);
+        nextRoundTimeoutRef.current = setTimeout(() => startBettingPhase(true), 1000);
         return;
       }
 
@@ -180,7 +185,7 @@ export default function LiveTableRoom() {
       const newBalance = Math.round((balanceRef.current - bet + resolved.payout) * 100) / 100;
       setBalance(Math.max(0, newBalance));
 
-      // Record to spins table for GGR tracking (same as slot machine)
+      // Record to spins table for GGR tracking
       if (user?.id) {
         supabase.from('spins').insert({
           user_id: user.id,
@@ -193,19 +198,7 @@ export default function LiveTableRoom() {
         });
       }
 
-      const netChange = Math.round((resolved.payout - bet) * 100) / 100;
-      const resultLabel = resolved.isPush
-        ? `Tie — returned KES ${bet.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
-        : resolved.won
-          ? `+KES ${netChange.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
-          : `-KES ${bet.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
-
-      setLog((prev) => [
-        `${resolved.outcome} | Bet KES ${bet.toLocaleString('en-US', { minimumFractionDigits: 2 })} → ${resultLabel} | RTP ${resolved.sessionRTP}%`,
-        ...prev.slice(0, 9),
-      ]);
-
-      nextRoundTimeoutRef.current = setTimeout(startBettingPhase, 5000);
+      nextRoundTimeoutRef.current = setTimeout(() => startBettingPhase(true), 5000);
     }, 2000);
   }
 
@@ -305,16 +298,8 @@ export default function LiveTableRoom() {
               </div>
             </div>
 
-            {/* Round log */}
-            {log.length > 0 && (
-              <div className="rounded-xl px-4 py-3"
-                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <p className="text-gray-500 text-[10px] font-orbitron tracking-widest mb-2">ROUND HISTORY</p>
-                {log.map((entry, i) => (
-                  <p key={i} className="text-gray-400 text-xs py-0.5 border-b border-white/5 last:border-0">{entry}</p>
-                ))}
-              </div>
-            )}
+
+
           </div>
 
           {/* Right: betting panel */}

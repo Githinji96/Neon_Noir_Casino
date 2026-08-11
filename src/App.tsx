@@ -1,4 +1,4 @@
-import { useEffect, useState, Component, type ReactNode, lazy, Suspense } from 'react';
+import { useEffect, useState, Component, type ReactNode, lazy, Suspense, useRef } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation, Outlet } from 'react-router-dom';
 import CasinoLobby from './pages/CasinoLobby';
 import SlotMachinePage from './pages/SlotMachine';
@@ -6,6 +6,7 @@ import JackpotsPage from './pages/JackpotsPage';
 import LiveTablesPage from './pages/LiveTablesPage';
 import LiveTableRoom from './pages/LiveTableRoom';
 import VIPPage from './pages/VIPPage';
+import NotificationsPage from './pages/NotificationsPage';
 import LoginPage from './pages/auth/LoginPage';
 import SignUpPage from './pages/auth/SignUpPage';
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
@@ -15,6 +16,7 @@ import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 import TermsAndConditionsPage from './pages/TermsAndConditionsPage';
 import ContactPage from './pages/ContactPage';
 import { useAuthStore } from './store/authStore';
+import { useAdminStore } from './store/adminStore';
 import AdminAuthGuard from './components/admin/AdminAuthGuard';
 import MusicManager from './components/MusicManager';
 import Footer from './components/Footer';
@@ -36,6 +38,7 @@ const FraudPage           = lazy(() => import('./pages/admin/FraudPage'));
 const AuditPage           = lazy(() => import('./pages/admin/AuditPage'));
 const WithdrawalsPage     = lazy(() => import('./pages/admin/WithdrawalsPage'));
 const SupportTicketsPage  = lazy(() => import('./pages/admin/SupportTicketsPage'));
+const CasinoFinancialPage = lazy(() => import('./pages/admin/CasinoFinancialPage'));
 
 const AdminFallback = () => (
   <div className="min-h-screen bg-gray-950 flex items-center justify-center">
@@ -106,10 +109,24 @@ function PublicLayout() {
 
 function AppRoutes() {
   const navigate = useNavigate();
+  const location = useLocation();
   const init = useAuthStore((s) => s.init);
+  const adminInit = useAdminStore((s) => s.init);
+  const preWarmedRef = useRef(false);
 
-  // Initialise auth once on mount — admin init is handled by AdminAuthGuard
-  useEffect(() => { init(); }, []);
+  // Initialise player auth once on mount
+  useEffect(() => { init(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Pre-warm admin store as soon as the URL looks like an admin page —
+  // fires before AdminAuthGuard mounts, so the DB fetch is already in-flight
+  // when the guard checks the store, eliminating most of the visible delay.
+  useEffect(() => {
+    if (preWarmedRef.current) return;
+    if (location.pathname.startsWith('/admin') && location.pathname !== '/admin/login') {
+      preWarmedRef.current = true;
+      void adminInit();
+    }
+  }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Routes>
@@ -118,6 +135,7 @@ function AppRoutes() {
         <Route path="/" element={<CasinoLobby onNavigateToSlot={(id?: string, title?: string, jackpotMode?: boolean) => navigate('/slot', { state: { id, title, jackpotMode } })} />} />
         <Route path="/jackpots" element={<JackpotsPage />} />
         <Route path="/vip" element={<VIPPage />} />
+        <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/live-tables" element={<LiveTablesPage />} />
         <Route path="/live-tables/:tableId" element={<LiveTableRoom />} />
         <Route path="/auth/login" element={<LoginPage />} />
@@ -164,6 +182,7 @@ function AppRoutes() {
           <Route element={<AdminAuthGuard requiredRoles={['super_admin','finance_admin']} />}>
             <Route path="/admin/finance" element={<Suspense fallback={<AdminFallback />}><FinancePage /></Suspense>} />
             <Route path="/admin/withdrawals" element={<Suspense fallback={<AdminFallback />}><WithdrawalsPage /></Suspense>} />
+            <Route path="/admin/casino-financial" element={<Suspense fallback={<AdminFallback />}><CasinoFinancialPage /></Suspense>} />
           </Route>
 
           {/* Games / RTP / Jackpots / Live Tables — super_admin, game_manager */}

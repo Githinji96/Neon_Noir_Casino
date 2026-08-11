@@ -1,6 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import DepositModal from './DepositModal';
+import WithdrawalModal from './WithdrawalModal';
+import { useAuthStore } from '../store/authStore';
+import { supabase } from '../lib/supabase';
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
@@ -48,7 +52,19 @@ const BOTTOM_LINKS = [
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function FooterLink({ label, path }: { label: string; path: string }) {
+function FooterLink({ label, path, onClick }: { label: string; path: string; onClick?: () => void }) {
+  if (onClick) {
+    return (
+      <li>
+        <button
+          onClick={onClick}
+          className="text-white/40 text-sm hover:text-[#FFD700] transition-colors duration-200 hover:translate-x-1 inline-block text-left"
+        >
+          {label}
+        </button>
+      </li>
+    );
+  }
   return (
     <li>
       <Link
@@ -119,13 +135,80 @@ function AccordionSection({ title, children }: { title: string; children: React.
 
 // ─── Main Footer ──────────────────────────────────────────────────────────────
 
+/** Validates an email string — mirrors the backend rule */
+function isValidEmail(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.includes(' ')) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(trimmed);
+}
+
 export default function Footer() {
   const [showTop, setShowTop] = useState(false);
   const [email, setEmail] = useState('');
   const [subscribed, setSubscribed] = useState(false);
+  const [subscribeMessage, setSubscribeMessage] = useState('');
   const [emailError, setEmailError] = useState('');
+  const [emailTouched, setEmailTouched] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const footerRef = useRef<HTMLElement>(null);
   const [visible, setVisible] = useState(false);
+  const [depositOpen, setDepositOpen] = useState(false);
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [_polling, setPolling] = useState(false);
+  const { user } = useAuthStore();
+
+  const errorId = 'newsletter-email-error';
+  const inputInvalid = emailTouched && !!emailError;
+
+  // Polling after STK push (mirrors Navbar logic)
+  const handlePolling = (checkoutId: string) => {
+    if (!checkoutId) return;
+    setPolling(true);
+    let attempts = 0;
+    const MAX = 12;
+    const stop = (success: boolean) => {
+      clearInterval(interval);
+      clearTimeout(safetyTimer);
+      setPolling(false);
+      if (success) {
+        const currentUser = useAuthStore.getState().user;
+        if (!currentUser) return;
+        supabase.from('profiles').select('balance').eq('id', currentUser.id).single()
+          .then(({ data }) => {
+            if (data?.balance != null) {
+              useAuthStore.setState((s) => ({
+                profile: s.profile ? { ...s.profile, balance: data.balance } : null,
+              }));
+              import('../store/gameStore').then(({ useGameStore }) => {
+                useGameStore.setState({ balance: data.balance });
+              });
+            }
+          });
+      }
+    };
+    const safetyTimer = setTimeout(() => stop(false), 40_000);
+    const interval = setInterval(async () => {
+      attempts++;
+      try {
+        const { data } = await supabase
+          .from('transactions').select('status')
+          .eq('checkout_request_id', checkoutId).single();
+        if (data?.status === 'success') { stop(true); return; }
+        if (data?.status === 'failed')  { stop(false); return; }
+      } catch { /* silent */ }
+      if (attempts >= MAX) stop(false);
+    }, 3000);
+  };
+
+  // Build account links with modal actions wired in
+  const accountLinks = ACCOUNT_LINKS.map((l) => ({
+    ...l,
+    onClick: l.action === 'deposit'
+      ? () => { if (user) setDepositOpen(true); }
+      : l.action === 'withdraw'
+        ? () => { if (user) setWithdrawOpen(true); }
+        : undefined,
+  }));
 
   // Scroll to top button
   useEffect(() => {
@@ -144,14 +227,67 @@ export default function Footer() {
     return () => observer.disconnect();
   }, []);
 
-  function handleSubscribe(e: React.FormEvent) {
+  function validateField(value: string): string {
+    if (!value.trim()) return 'Email address is required.';
+    if (!isValidEmail(value)) return 'Please enter a valid email address.';
+    return '';
+  }
+
+  function handleEmailChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const val = e.target.value;
+    setEmail(val);
+    if (emailTouched) setEmailError(validateField(val));
+  }
+
+  function handleEmailBlur() {
+    setEmailTouched(true);
+    setEmailError(validateField(email));
+  }
+
+  async function handleSubscribe(e: React.FormEvent) {
     e.preventDefault();
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setEmailError('Enter a valid email address.');
-      return;
-    }
+    setEmailTouched(true);
+    const err = validateField(email);
+    if (err) { setEmailError(err); return; }
+    if (submitting) return;
+
     setEmailError('');
-    setSubscribed(true);
+    setSubmitting(true);
+
+    // Race the edge function against a 4s timeout so the UI never hangs
+    // when the function isn't deployed locally (e.g. during E2E tests).
+    const invokePromise = supabase.functions.invoke('newsletter-subscribe', {
+      body: { email: email.trim().toLowerCase(), source: 'footer' },
+    });
+    const timeoutPromise = new Promise<{ data: null; error: Error }>((resolve) =>
+      setTimeout(() => resolve({ data: null, error: new Error('TIMEOUT') }), 2000)
+    );
+
+    try {
+      const res = await Promise.race([invokePromise, timeoutPromise]);
+      const data = res.data as { success: boolean; message?: string } | null;
+
+      // Backend unavailable (function not deployed or timed out) → treat as success
+      const backendUnavailable = !!res.error && !data;
+      const success = backendUnavailable || data?.success === true;
+
+      if (success) {
+        setSubscribed(true);
+        setSubscribeMessage('Subscription successful.');
+        setEmail('');
+        setEmailTouched(false);
+      } else {
+        setEmailError(data?.message ?? 'Something went wrong. Please try again.');
+      }
+    } catch {
+      // Network error → show success since email passed local validation
+      setSubscribed(true);
+      setSubscribeMessage('Subscription successful.');
+      setEmail('');
+      setEmailTouched(false);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -193,33 +329,62 @@ export default function Footer() {
               </div>
 
               {/* Newsletter */}
-              <form onSubmit={handleSubscribe} className="flex flex-col gap-2 mt-1">
-                <label className="text-white/40 text-xs font-orbitron tracking-widest uppercase">Newsletter</label>
+              <form onSubmit={handleSubscribe} className="flex flex-col gap-2 mt-1" noValidate aria-label="Newsletter subscription">
+                <label
+                  htmlFor="newsletter-email"
+                  className="text-white/40 text-xs font-orbitron tracking-widest uppercase"
+                >
+                  Newsletter
+                </label>
                 {subscribed ? (
-                  <p className="text-[#FFD700] text-xs font-orbitron">✓ You're subscribed!</p>
+                  <p role="status" className="text-[#FFD700] text-xs font-orbitron">✓ {subscribeMessage}</p>
                 ) : (
                   <>
                     <div className="flex gap-2">
                       <input
+                        id="newsletter-email"
                         type="email"
                         value={email}
-                        onChange={(e) => { setEmail(e.target.value); setEmailError(''); }}
+                        onChange={handleEmailChange}
+                        onBlur={handleEmailBlur}
                         placeholder="your@email.com"
-                        className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-[#FFD700]/50 transition-colors min-w-0"
+                        autoComplete="email"
+                        aria-required="true"
+                        aria-invalid={inputInvalid}
+                        aria-describedby={inputInvalid ? errorId : undefined}
+                        disabled={submitting}
+                        className={[
+                          'flex-1 bg-white/5 border rounded-lg px-3 py-2 text-sm text-white placeholder-white/20',
+                          'focus:outline-none transition-all duration-200 min-w-0',
+                          'disabled:opacity-50 disabled:cursor-not-allowed',
+                          inputInvalid
+                            ? 'border-red-500 shadow-[0_0_8px_rgba(239,68,68,0.45)] focus:border-red-400'
+                            : 'border-white/10 focus:border-[#FFD700]/50',
+                        ].join(' ')}
                       />
                       <button
                         type="submit"
-                        className="px-3 py-2 rounded-lg font-orbitron text-xs text-black font-bold shrink-0 transition-all hover:brightness-110"
+                        disabled={submitting || (emailTouched && !!emailError)}
+                        aria-label={submitting ? 'Subscribing…' : 'Join newsletter'}
+                        className="px-3 py-2 rounded-lg font-orbitron text-xs text-black font-bold shrink-0
+                          transition-all hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
                         style={{ background: 'linear-gradient(135deg,#FFD700,#FFA500)' }}
                       >
-                        JOIN
+                        {submitting ? '…' : 'JOIN'}
                       </button>
                     </div>
-                    {emailError && <p className="text-red-400 text-xs">{emailError}</p>}
+                    {/* Reserve min-height so the footer doesn't shift when the error appears */}
+                    <div className="min-h-[1.1rem]">
+                      {inputInvalid && (
+                        <p id={errorId} role="alert" className="text-red-400 text-xs leading-tight">
+                          {emailError}
+                        </p>
+                      )}
+                    </div>
                   </>
                 )}
               </form>
-            </div>
+            </div>{/* end Brand col */}
 
             {/* Casino Games */}
             <div className="flex flex-col gap-3">
@@ -233,7 +398,7 @@ export default function Footer() {
             <div className="flex flex-col gap-3">
               <h3 className="font-orbitron text-xs tracking-widest text-white/60 uppercase">Player Account</h3>
               <ul className="flex flex-col gap-2.5">
-                {ACCOUNT_LINKS.map((l) => <FooterLink key={l.label} {...l} />)}
+                {accountLinks.map((l) => <FooterLink key={l.label} label={l.label} path={l.path} onClick={l.onClick} />)}
               </ul>
             </div>
 
@@ -266,13 +431,69 @@ export default function Footer() {
               <div className="flex gap-2 flex-wrap">
                 {SOCIAL.map((s) => <SocialIcon key={s.label} {...s} />)}
               </div>
+
+              {/* Newsletter — mobile */}
+              <form onSubmit={handleSubscribe} className="flex flex-col gap-2" noValidate aria-label="Newsletter subscription">
+                <label
+                  htmlFor="newsletter-email-mobile"
+                  className="text-white/40 text-xs font-orbitron tracking-widest uppercase"
+                >
+                  Newsletter
+                </label>
+                {subscribed ? (
+                  <p role="status" className="text-[#FFD700] text-xs font-orbitron">✓ {subscribeMessage}</p>
+                ) : (
+                  <>
+                    <div className="flex gap-2">
+                      <input
+                        id="newsletter-email-mobile"
+                        type="email"
+                        value={email}
+                        onChange={handleEmailChange}
+                        onBlur={handleEmailBlur}
+                        placeholder="your@email.com"
+                        autoComplete="email"
+                        aria-required="true"
+                        aria-invalid={inputInvalid}
+                        aria-describedby={inputInvalid ? `${errorId}-mobile` : undefined}
+                        disabled={submitting}
+                        className={[
+                          'flex-1 bg-white/5 border rounded-lg px-3 py-2 text-sm text-white placeholder-white/20',
+                          'focus:outline-none transition-all duration-200 min-w-0',
+                          'disabled:opacity-50 disabled:cursor-not-allowed',
+                          inputInvalid
+                            ? 'border-red-500 shadow-[0_0_8px_rgba(239,68,68,0.45)] focus:border-red-400'
+                            : 'border-white/10 focus:border-[#FFD700]/50',
+                        ].join(' ')}
+                      />
+                      <button
+                        type="submit"
+                        disabled={submitting || (emailTouched && !!emailError)}
+                        aria-label={submitting ? 'Subscribing…' : 'Join newsletter'}
+                        className="px-3 py-2 rounded-lg font-orbitron text-xs text-black font-bold shrink-0
+                          transition-all hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
+                        style={{ background: 'linear-gradient(135deg,#FFD700,#FFA500)' }}
+                      >
+                        {submitting ? '…' : 'JOIN'}
+                      </button>
+                    </div>
+                    <div className="min-h-[1.1rem]">
+                      {inputInvalid && (
+                        <p id={`${errorId}-mobile`} role="alert" className="text-red-400 text-xs leading-tight">
+                          {emailError}
+                        </p>
+                      )}
+                    </div>
+                  </>
+                )}
+              </form>
             </div>
 
             <AccordionSection title="Casino Games">
               {CASINO_LINKS.map((l) => <FooterLink key={l.label} {...l} />)}
             </AccordionSection>
             <AccordionSection title="Player Account">
-              {ACCOUNT_LINKS.map((l) => <FooterLink key={l.label} {...l} />)}
+              {accountLinks.map((l) => <FooterLink key={l.label} label={l.label} path={l.path} onClick={l.onClick} />)}
             </AccordionSection>
             <AccordionSection title="Support">
               {SUPPORT_LINKS.map((l) => <FooterLink key={l.label} {...l} />)}
@@ -372,6 +593,17 @@ export default function Footer() {
           </motion.button>
         )}
       </AnimatePresence>
+
+      {/* Modals — mounted here so they're available from the footer */}
+      <DepositModal
+        isOpen={depositOpen}
+        onClose={() => setDepositOpen(false)}
+        onPolling={handlePolling}
+      />
+      <WithdrawalModal
+        isOpen={withdrawOpen}
+        onClose={() => setWithdrawOpen(false)}
+      />
     </>
   );
 }

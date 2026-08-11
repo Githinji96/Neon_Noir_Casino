@@ -5,6 +5,8 @@ import { useAuthStore } from '../store/authStore';
 import { useGameStore } from '../store/gameStore';
 import { supabase } from '../lib/supabase';
 import { useNavigate } from 'react-router-dom';
+import ChangeMpesaModal from './ChangeMpesaModal';
+import { normalizeKenyanPhone } from '../services/authSchemas';
 
 type Tab = 'account' | 'wallet' | 'game' | 'notifications' | 'security' | 'preferences';
 
@@ -60,13 +62,30 @@ export default function SettingsModal() {
   const [pwMsg, setPwMsg] = useState('');
   const [pwLoading, setPwLoading] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [username, setUsername] = useState('');
+  const [changeMpesaOpen, setChangeMpesaOpen] = useState(false);
+
+  // Suspend flow
+  const [suspendStep, setSuspendStep] = useState<'idle' | 'confirm'>('idle');
+  const [suspendPassword, setSuspendPassword] = useState('');
+  const [suspendMsg, setSuspendMsg] = useState('');
+  const [suspendLoading, setSuspendLoading] = useState(false);
+
+  // Delete flow
+  const [deleteStep, setDeleteStep] = useState<'idle' | 'confirm'>('idle');
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteMsg, setDeleteMsg] = useState('');
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   useEffect(() => {
     if (!isOpen || !user?.id) return;
     loadFromSupabase(user.id);
-    supabase.from('profiles').select('username').eq('id', user.id).single()
+    useAuthStore.getState().refreshBalance();
+    supabase
+      .from('profiles')
+      .select('username')
+      .eq('id', user.id)
+      .single()
       .then(({ data }) => { if (data?.username) setUsername(data.username); });
   }, [isOpen, user?.id]);
 
@@ -108,23 +127,52 @@ export default function SettingsModal() {
     if (!error) setPwForm({ next: '', confirm: '' });
   }
 
-  async function handleLogout() {
-    closeSettings();
-    await signOut();
+  async function handleSuspend() {
+    if (!suspendPassword) { setSuspendMsg('Password is required.'); return; }
+    setSuspendLoading(true);
+    setSuspendMsg('');
+    // Verify password
+    const { error: authErr } = await supabase.auth.signInWithPassword({
+      email: user!.email!, password: suspendPassword,
+    });
+    if (authErr) {
+      setSuspendMsg('Incorrect password. Please try again.');
+      setSuspendLoading(false);
+      return;
+    }
+    // Set account_status = suspended
+    await supabase.from('profiles').update({ account_status: 'suspended' }).eq('id', user!.id);
+    await supabase.auth.signOut();
     useGameStore.setState({ balance: 0 });
+    setSuspendLoading(false);
+    closeSettings();
     navigate('/auth/login');
   }
 
   async function handleDeleteAccount() {
-    if (!user?.id) return;
-    await supabase.from('profiles').delete().eq('id', user.id);
+    if (!deletePassword) { setDeleteMsg('Password is required.'); return; }
+    setDeleteLoading(true);
+    setDeleteMsg('');
+    // Verify password first
+    const { error: authErr } = await supabase.auth.signInWithPassword({
+      email: user!.email!, password: deletePassword,
+    });
+    if (authErr) {
+      setDeleteMsg('Incorrect password. Please try again.');
+      setDeleteLoading(false);
+      return;
+    }
+    // Mark as deleted in profiles
+    await supabase.from('profiles').update({ account_status: 'banned' }).eq('id', user!.id);
     await supabase.auth.signOut();
     useGameStore.setState({ balance: 0 });
+    setDeleteLoading(false);
     closeSettings();
     navigate('/auth/login');
   }
 
   return (
+    <>
     <AnimatePresence>
       {isOpen && (
         <motion.div
@@ -176,7 +224,7 @@ export default function SettingsModal() {
                     </button>
                   ))}
                 </div>
-                <button onClick={handleLogout}
+                <button onClick={async () => { closeSettings(); await signOut(); useGameStore.setState({ balance: 0 }); navigate('/auth/login'); }}
                   className="flex items-center gap-2 px-4 py-2.5 text-left text-xs font-orbitron tracking-wider text-red-400 hover:bg-red-400/10 transition-all border-t border-white/10 mt-2">
                   <span>🚪</span> Logout
                 </button>
@@ -197,6 +245,30 @@ export default function SettingsModal() {
                     </div>
                     <Row label="Balance">
                       <span className="font-orbitron text-sm text-yellow-400">KES {balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                    </Row>
+
+                    <SectionTitle>M-Pesa Account</SectionTitle>
+                    <Row label="Registered Number">
+                      {profile?.phone ? (
+                        <span className="font-orbitron text-sm text-white">
+                          {(() => {
+                            const n = normalizeKenyanPhone(profile.phone);
+                            const d = n.startsWith('254') ? n.slice(3) : n;
+                            // Mask middle digits for privacy: +254 7XX *** XXX
+                            if (d.length >= 9)
+                              return `+254 ${d[0]}${d[1]}${d[2]} ${'*'.repeat(3)} ${d[6]}${d[7]}${d[8]}`;
+                            return `+254 ${d}`;
+                          })()}
+                        </span>
+                      ) : (
+                        <span className="text-white/25 text-sm font-mono">—</span>
+                      )}
+                      <button
+                        onClick={() => setChangeMpesaOpen(true)}
+                        className="font-orbitron text-xs px-2 py-1 rounded-lg bg-yellow-400/10 border border-yellow-400/30 text-yellow-400 hover:bg-yellow-400/20 transition-colors"
+                      >
+                        {profile?.phone ? 'Change' : 'Add Number'}
+                      </button>
                     </Row>
                   </div>
                 )}
@@ -231,8 +303,29 @@ export default function SettingsModal() {
                 {tab === 'game' && (
                   <div>
                     <SectionTitle>Sound</SectionTitle>
-                    <Row label="Sound Effects"><Toggle checked={settings.soundEnabled} onChange={(v) => updateSettings({ soundEnabled: v })} /></Row>
-                    <Row label="Background Music"><Toggle checked={settings.musicEnabled} onChange={(v) => updateSettings({ musicEnabled: v })} /></Row>
+                    <Row label="Sound Effects">
+                      <Toggle
+                        checked={settings.soundEnabled}
+                        onChange={(v) => {
+                          updateSettings({ soundEnabled: v });
+                          // Sync immediately to gameStore so in-game sounds respond without needing SAVE
+                          useGameStore.setState({ soundEnabled: v });
+                        }}
+                      />
+                    </Row>
+                    <Row label="Background Music">
+                      <Toggle
+                        checked={settings.musicEnabled}
+                        onChange={(v) => {
+                          updateSettings({ musicEnabled: v });
+                          // Immediately pause/resume music without requiring SAVE
+                          import('../utils/jamendo').then(({ pauseMusic, resumeMusic }) => {
+                            if (v) resumeMusic();
+                            else pauseMusic();
+                          });
+                        }}
+                      />
+                    </Row>
                     <SectionTitle>Animation Speed</SectionTitle>
                     <Row label="Speed">
                       <div className="flex gap-1">
@@ -246,12 +339,22 @@ export default function SettingsModal() {
                     </Row>
                     <SectionTitle>Auto-Spin</SectionTitle>
                     <Row label="Spins">
-                      <select value={settings.autoSpinCount} onChange={(e) => updateSettings({ autoSpinCount: Number(e.target.value) })}
-                        className="bg-white/5 border border-white/10 rounded-lg px-3 py-1 text-sm text-white focus:outline-none">
-                        {[5, 10, 25, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
+                      <select
+                        value={settings.autoSpinCount}
+                        onChange={(e) => updateSettings({ autoSpinCount: Number(e.target.value) })}
+                        className="border border-white/10 rounded-lg px-3 py-1 text-sm text-gray-300 focus:outline-none focus:border-yellow-400/50"
+                        style={{ background: '#0d0020', colorScheme: 'dark' }}
+                      >
+                        {[5, 10, 25, 50, 100].map((n) => (
+                          <option key={n} value={n} style={{ background: '#0d0020', color: '#d1d5db' }}>
+                            {n}
+                          </option>
+                        ))}
                       </select>
                     </Row>
-                    <Row label="Stop on Win"><Toggle checked={settings.stopOnWin} onChange={(v) => updateSettings({ stopOnWin: v })} /></Row>
+                    <Row label="Stop on Win">
+                      <Toggle checked={settings.stopOnWin} onChange={(v) => updateSettings({ stopOnWin: v })} />
+                    </Row>
                   </div>
                 )}
 
@@ -289,29 +392,101 @@ export default function SettingsModal() {
                         {pwLoading ? 'UPDATING...' : 'UPDATE PASSWORD'}
                       </button>
                     </div>
+
                     <SectionTitle>Sessions</SectionTitle>
-                    <button onClick={() => supabase.auth.signOut({ scope: 'global' }).then(() => { closeSettings(); navigate('/auth/login'); })}
-                      className="mt-2 px-4 py-2 rounded-lg bg-red-600/20 border border-red-500/30 text-red-400 font-orbitron text-xs tracking-widest hover:bg-red-600/30 transition-colors">
+                    <button
+                      onClick={() => supabase.auth.signOut({ scope: 'global' }).then(() => { closeSettings(); navigate('/auth/login'); })}
+                      className="mt-2 px-4 py-2 rounded-lg bg-red-600/20 border border-red-500/30 text-red-400 font-orbitron text-xs tracking-widest hover:bg-red-600/30 transition-colors"
+                    >
                       LOGOUT ALL DEVICES
                     </button>
-                    <SectionTitle>Danger Zone</SectionTitle>
-                    <div className="mt-2 p-3 rounded-xl border border-red-500/20 bg-red-500/5">
-                      <p className="text-white/40 text-xs mb-3">Permanently delete your account. Cannot be undone.</p>
-                      {!deleteConfirm ? (
-                        <button onClick={() => setDeleteConfirm(true)}
-                          className="px-4 py-2 rounded-lg bg-red-600/20 border border-red-500/40 text-red-400 font-orbitron text-xs tracking-widest hover:bg-red-600/40 transition-colors">
-                          DELETE ACCOUNT
+
+                    {/* ── Self-Exclusion ── */}
+                    <SectionTitle>Self-Exclusion</SectionTitle>
+                    <div className="mt-2 p-4 rounded-xl border border-yellow-500/20 bg-yellow-500/5 flex flex-col gap-3">
+                      <p className="text-white/60 text-xs leading-relaxed">
+                        Temporarily suspend your account. You will be logged out and unable to log back in until you contact support to reactivate.
+                      </p>
+                      {suspendStep === 'idle' && (
+                        <button
+                          onClick={() => setSuspendStep('confirm')}
+                          className="self-start px-4 py-2 rounded-lg bg-yellow-500/20 border border-yellow-500/40 text-yellow-400 font-orbitron text-xs tracking-widest hover:bg-yellow-500/30 transition-colors"
+                        >
+                          ⏸ SUSPEND MY ACCOUNT
                         </button>
-                      ) : (
-                        <div className="flex gap-2">
-                          <button onClick={handleDeleteAccount}
-                            className="px-4 py-2 rounded-lg bg-red-600 text-white font-orbitron text-xs tracking-widest hover:bg-red-500 transition-colors">
-                            YES, DELETE
-                          </button>
-                          <button onClick={() => setDeleteConfirm(false)}
-                            className="px-4 py-2 rounded-lg bg-white/10 text-white/60 font-orbitron text-xs tracking-widest hover:bg-white/20 transition-colors">
-                            CANCEL
-                          </button>
+                      )}
+                      {suspendStep === 'confirm' && (
+                        <div className="flex flex-col gap-2">
+                          <p className="text-yellow-400 text-xs font-orbitron">Enter your password to confirm suspension:</p>
+                          <input
+                            type="password"
+                            value={suspendPassword}
+                            onChange={(e) => { setSuspendPassword(e.target.value); setSuspendMsg(''); }}
+                            placeholder="Current password"
+                            className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-yellow-400/50"
+                          />
+                          {suspendMsg && <p className={`text-xs ${suspendMsg.startsWith('✓') ? 'text-green-400' : 'text-red-400'}`}>{suspendMsg}</p>}
+                          <div className="flex gap-2">
+                            <button
+                              onClick={handleSuspend}
+                              disabled={suspendLoading}
+                              className="px-4 py-2 rounded-lg bg-yellow-500 text-black font-orbitron text-xs font-bold tracking-widest hover:bg-yellow-400 transition-colors disabled:opacity-50 flex items-center gap-2"
+                            >
+                              {suspendLoading && <span className="w-3 h-3 rounded-full border-2 border-black border-t-transparent animate-spin" />}
+                              {suspendLoading ? 'SUSPENDING...' : 'CONFIRM SUSPEND'}
+                            </button>
+                            <button
+                              onClick={() => { setSuspendStep('idle'); setSuspendPassword(''); setSuspendMsg(''); }}
+                              className="px-4 py-2 rounded-lg bg-white/10 text-white/60 font-orbitron text-xs tracking-widest hover:bg-white/20 transition-colors"
+                            >
+                              CANCEL
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* ── Delete Account ── */}
+                    <SectionTitle>Delete Account</SectionTitle>
+                    <div className="mt-2 p-4 rounded-xl border border-red-500/25 bg-red-500/5 flex flex-col gap-3">
+                      <p className="text-white/50 text-xs leading-relaxed">
+                        Permanently delete your account and all associated data. <span className="text-red-400 font-semibold">This cannot be undone.</span>
+                      </p>
+                      {deleteStep === 'idle' && (
+                        <button
+                          onClick={() => setDeleteStep('confirm')}
+                          className="self-start px-4 py-2 rounded-lg bg-red-600/20 border border-red-500/40 text-red-400 font-orbitron text-xs tracking-widest hover:bg-red-600/40 transition-colors"
+                        >
+                          🗑 DELETE MY ACCOUNT
+                        </button>
+                      )}
+                      {deleteStep === 'confirm' && (
+                        <div className="flex flex-col gap-2">
+                          <p className="text-red-400 text-xs font-orbitron">Enter your password to permanently delete your account:</p>
+                          <input
+                            type="password"
+                            value={deletePassword}
+                            onChange={(e) => { setDeletePassword(e.target.value); setDeleteMsg(''); }}
+                            placeholder="Current password"
+                            className="w-full bg-white/5 border border-red-500/30 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-red-400/60"
+                          />
+                          {deleteMsg && <p className={`text-xs ${deleteMsg.startsWith('✓') ? 'text-green-400' : 'text-red-400'}`}>{deleteMsg}</p>}
+                          <div className="flex gap-2">
+                            <button
+                              onClick={handleDeleteAccount}
+                              disabled={deleteLoading}
+                              className="px-4 py-2 rounded-lg bg-red-600 text-white font-orbitron text-xs font-bold tracking-widest hover:bg-red-500 transition-colors disabled:opacity-50 flex items-center gap-2"
+                            >
+                              {deleteLoading && <span className="w-3 h-3 rounded-full border-2 border-white border-t-transparent animate-spin" />}
+                              {deleteLoading ? 'DELETING...' : 'YES, DELETE PERMANENTLY'}
+                            </button>
+                            <button
+                              onClick={() => { setDeleteStep('idle'); setDeletePassword(''); setDeleteMsg(''); }}
+                              className="px-4 py-2 rounded-lg bg-white/10 text-white/60 font-orbitron text-xs tracking-widest hover:bg-white/20 transition-colors"
+                            >
+                              CANCEL
+                            </button>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -361,5 +536,12 @@ export default function SettingsModal() {
         </motion.div>
       )}
     </AnimatePresence>
+
+    <ChangeMpesaModal
+      isOpen={changeMpesaOpen}
+      onClose={() => setChangeMpesaOpen(false)}
+      onSuccess={() => setChangeMpesaOpen(false)}
+    />
+  </>
   );
 }

@@ -52,6 +52,7 @@ export type Profile = {
   username: string;
   balance: number;
   phone?: string;
+  phone_verified?: boolean;
   updated_at: string;
 };
 

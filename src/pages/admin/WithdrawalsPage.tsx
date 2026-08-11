@@ -64,23 +64,104 @@ export default function WithdrawalsPage() {
 
   async function handleApprove(row: WithdrawalRow) {
     setActionLoading(row.id);
-    await supabase.from('transactions')
-      .update({ status: 'approved', approved_at: new Date().toISOString() })
-      .eq('id', row.id);
+    try {
+      // First mark approved in DB — record who approved it
+      const approvedBy = adminProfile?.username ?? adminProfile?.id ?? 'admin';
+      const { error: updateErr } = await supabase.from('transactions')
+        .update({
+          status: 'approved',
+          approved_at: new Date().toISOString(),
+          approved_by: approvedBy,
+        })
+        .eq('id', row.id);
+
+      if (updateErr) throw new Error(updateErr.message);
+
+      // Then trigger the B2C payout via edge function
+      const { data: { session } } = await supabase.auth.getSession();
+      const FUNCTIONS_URL = import.meta.env.VITE_SUPABASE_URL.replace(
+        '.supabase.co',
+        '.supabase.co/functions/v1',
+      );
+
+      const res = await fetch(`${FUNCTIONS_URL}/mpesa-b2c`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token ?? ''}`,
+        },
+        body: JSON.stringify({ transactionId: row.id }),
+      });
+
+      const result = await res.json();
+
+      if (!res.ok || result.error) {
+        // B2C call failed — show error but don't revert (admin can retry)
+        toast(`Approved but B2C failed: ${result.error ?? 'Unknown error'}. Retry from admin panel.`, 'error');
+      } else {
+        toast(
+          result.sandbox
+            ? `✅ Sandbox: KES ${row.amount.toLocaleString()} payout simulated to ${row.phone}`
+            : `✅ KES ${row.amount.toLocaleString()} B2C initiated to ${row.phone}`,
+          'success',
+        );
+      }
+    } catch (err) {
+      toast(`Approve failed: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
+    }
+
     await auditLog({
       admin_id: adminProfile?.id ?? null, admin_role: adminProfile?.admin_role ?? 'super_admin',
       action_type: 'withdrawal_approve', target_entity: 'transactions', target_id: row.id,
       previous_value: 'pending', new_value: 'approved', ip_address: null,
     });
-    toast(`Withdrawal approved — KES ${row.amount.toLocaleString()} to ${row.phone}`, 'success');
+    setActionLoading(null);
+    fetchWithdrawals();
+  }
+
+  async function handleRetryPayout(row: WithdrawalRow) {
+    setActionLoading(row.id);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const FUNCTIONS_URL = import.meta.env.VITE_SUPABASE_URL.replace(
+        '.supabase.co',
+        '.supabase.co/functions/v1',
+      );
+      const res = await fetch(`${FUNCTIONS_URL}/mpesa-b2c`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token ?? ''}`,
+        },
+        body: JSON.stringify({ transactionId: row.id }),
+      });
+      const result = await res.json();
+      if (!res.ok || result.error) {
+        toast(`Payout failed: ${result.error ?? 'Unknown error'}`, 'error');
+      } else {
+        toast(
+          result.sandbox
+            ? `✅ Sandbox: KES ${row.amount.toLocaleString()} payout simulated`
+            : `✅ KES ${row.amount.toLocaleString()} B2C initiated to ${row.phone}`,
+          'success',
+        );
+      }
+    } catch (err) {
+      toast(`Payout error: ${err instanceof Error ? err.message : 'Unknown'}`, 'error');
+    }
     setActionLoading(null);
     fetchWithdrawals();
   }
 
   async function handleMarkCompleted(row: WithdrawalRow) {
     setActionLoading(row.id);
+    const approvedBy = adminProfile?.username ?? adminProfile?.id ?? 'admin';
     await supabase.from('transactions')
-      .update({ status: 'completed' })
+      .update({
+        status: 'completed',
+        approved_by: approvedBy,
+        approved_at: new Date().toISOString(),
+      })
       .eq('id', row.id);
     await auditLog({
       admin_id: adminProfile?.id ?? null, admin_role: adminProfile?.admin_role ?? 'super_admin',
@@ -104,7 +185,12 @@ export default function WithdrawalsPage() {
     }
 
     await supabase.from('transactions')
-      .update({ status: 'rejected', rejection_reason: rejectReason || 'Rejected by admin' })
+      .update({
+        status: 'rejected',
+        rejection_reason: rejectReason || 'Rejected by admin',
+        approved_by: adminProfile?.username ?? adminProfile?.id ?? 'admin',
+        approved_at: new Date().toISOString(),
+      })
       .eq('id', rejectId);
     await auditLog({
       admin_id: adminProfile?.id ?? null, admin_role: adminProfile?.admin_role ?? 'super_admin',
@@ -153,12 +239,20 @@ export default function WithdrawalsPage() {
             </>
           )}
           {r.status === 'approved' && (
-            <button
-              onClick={() => handleMarkCompleted(r)}
-              disabled={actionLoading === r.id}
-              className="px-2 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white text-xs transition-colors disabled:opacity-50">
-              Mark Done
-            </button>
+            <>
+              <button
+                onClick={() => handleRetryPayout(r)}
+                disabled={actionLoading === r.id}
+                className="px-2 py-1 rounded bg-green-600 hover:bg-green-500 text-white text-xs transition-colors disabled:opacity-50">
+                Send Payout
+              </button>
+              <button
+                onClick={() => handleMarkCompleted(r)}
+                disabled={actionLoading === r.id}
+                className="px-2 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white text-xs transition-colors disabled:opacity-50">
+                Mark Done
+              </button>
+            </>
           )}
           {r.rejection_reason && (
             <span className="text-red-400/60 text-xs italic truncate max-w-[80px]" title={r.rejection_reason}>

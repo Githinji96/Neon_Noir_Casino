@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation, Link, useNavigate } from 'react-router-dom';
 import { useGameStore } from '../store/gameStore';
 import { useAuthStore } from '../store/authStore';
@@ -7,11 +7,14 @@ import LeaderboardModal from './LeaderboardModal';
 import DepositModal from './DepositModal';
 import WithdrawalModal from './WithdrawalModal';
 import SettingsModal from './SettingsModal';
+import NotificationBell from './NotificationBell';
 import { useSettingsStore } from '../store/settingsStore';
+import { useNotificationStore } from '../store/notificationStore';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface NavbarProps {
   activeTab?: string;
+  compact?: boolean;
 }
 
 const QUICK_NAV = [
@@ -28,36 +31,77 @@ const NAV_LINKS = [
   { label: 'VIP',         path: '/vip',          icon: '👑' },
 ];
 
-const formatBalance = (balance: number): string =>
-  `KES ${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+function formatBalance(balance: number): string {
+  if (balance >= 100_000) return `KES ${(balance / 1000).toFixed(1)}K`;
+  return `KES ${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
 
-export default function Navbar({ activeTab }: NavbarProps) {
+// ── Mobile menu row ──────────────────────────────────────────
+function MenuRow({ icon, label, onClick, danger }: {
+  icon: string; label: string; onClick: () => void; danger?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-3 w-full px-1 py-3 rounded-xl transition-colors active:bg-white/10
+        ${danger ? 'text-red-400 hover:bg-red-400/10' : 'text-white/80 hover:bg-white/5'}`}
+    >
+      <span className="text-xl w-7 text-center shrink-0">{icon}</span>
+      <span className="font-orbitron text-sm tracking-wider">{label}</span>
+    </button>
+  );
+}
+
+export default function Navbar({ activeTab, compact }: NavbarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
   const [depositOpen, setDepositOpen] = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [polling, setPolling] = useState(false);
   const openSettings = useSettingsStore((s) => s.openSettings);
+  const unreadCount  = useNotificationStore((s) => s.unreadCount);
   const location = useLocation();
   const navigate = useNavigate();
   const balance = useGameStore((state) => state.balance);
   const { user, profile, signOut } = useAuthStore();
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMobileMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [mobileMenuOpen]);
+
+  // Close on Escape
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') setMobileMenuOpen(false); };
+    document.addEventListener('keydown', h);
+    return () => document.removeEventListener('keydown', h);
+  }, []);
+
+  // Prevent body scroll while menu is open
+  useEffect(() => {
+    document.body.style.overflow = mobileMenuOpen ? 'hidden' : '';
+    return () => { document.body.style.overflow = ''; };
+  }, [mobileMenuOpen]);
 
   const handlePolling = (checkoutId: string) => {
     if (!checkoutId) return;
     setPolling(true);
     let attempts = 0;
-    const MAX = 24; // 24 × 5s = 2 minutes
+    const MAX = 12;
 
     const syncBalance = async () => {
-      // Always read fresh user ID from store — avoids stale closure
       const currentUser = useAuthStore.getState().user;
       if (!currentUser) return;
       const { data: prof } = await supabase
-        .from('profiles')
-        .select('balance')
-        .eq('id', currentUser.id)
-        .single();
+        .from('profiles').select('balance').eq('id', currentUser.id).single();
       if (prof?.balance != null) {
         useAuthStore.setState((s) => ({
           profile: s.profile ? { ...s.profile, balance: prof.balance } : null,
@@ -74,34 +118,27 @@ export default function Navbar({ activeTab }: NavbarProps) {
       if (success) syncBalance();
     };
 
-    const safetyTimer = setTimeout(() => stop(false), 125_000);
+    const safetyTimer = setTimeout(() => stop(false), 40_000);
 
     const interval = setInterval(async () => {
       attempts++;
       try {
         const { data } = await supabase
-          .from('transactions')
-          .select('status')
-          .eq('checkout_request_id', checkoutId)
-          .single();
+          .from('transactions').select('status')
+          .eq('checkout_request_id', checkoutId).single();
 
         if (data?.status === 'success') { stop(true); return; }
         if (data?.status === 'failed')  { stop(false); return; }
 
-        // After 2 pending polls (~10s in sandbox, ~30s in prod), actively query Daraja for status
-        if (attempts >= 2 && data?.status === 'pending') {
+        if (attempts >= 3 && data?.status === 'pending') {
           try {
             const session = (await supabase.auth.getSession()).data.session;
             const FUNCTIONS_URL = import.meta.env.VITE_SUPABASE_URL.replace(
-              '.supabase.co',
-              '.supabase.co/functions/v1',
+              '.supabase.co', '.supabase.co/functions/v1',
             );
             const res = await fetch(`${FUNCTIONS_URL}/mpesa-stk`, {
               method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${session?.access_token}`,
-              },
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
               body: JSON.stringify({ action: 'query', checkoutRequestId: checkoutId }),
             });
             const result = await res.json();
@@ -114,30 +151,35 @@ export default function Navbar({ activeTab }: NavbarProps) {
       } catch (pollErr) {
         console.warn('[handlePolling] poll error:', pollErr);
       }
-
       if (attempts >= MAX) stop(false);
-    }, 5000);
+    }, 3000);
   };
 
   const handleSignOut = async () => {
+    setMobileMenuOpen(false);
     await signOut();
     const { useGameStore } = await import('../store/gameStore');
     useGameStore.setState({ balance: 0 });
     navigate('/auth/login');
   };
 
+  const close = () => setMobileMenuOpen(false);
   const isActive = (path: string) => activeTab ? activeTab === path : location.pathname === path;
 
   return (
-    <nav className="sticky top-0 z-50 bg-black border-b border-yellow-400/20">
+    <nav className="sticky top-0 z-50 bg-black border-b border-yellow-400/20" ref={menuRef}>
 
       {/* ── TOP BAR ── */}
-      <div className="px-2 sm:px-4 h-12 flex items-center justify-between gap-1 overflow-hidden">
+      <div className="px-3 sm:px-4 h-12 flex items-center justify-between gap-2 min-w-0">
+
         {/* Logo */}
-        <Link to="/" className="font-orbitron font-bold tracking-tight text-neon-yellow text-[11px] xs:text-sm sm:text-base shrink-0 leading-tight"
-          style={{ textShadow: '0 0 8px rgba(255,215,0,0.6)' }}>
-          <span className="xs:hidden">N.N.C</span>
-          <span className="hidden xs:inline">NEON NOIR CASINO</span>
+        <Link
+          to="/"
+          className="font-orbitron font-bold tracking-tight text-neon-yellow shrink-0 leading-tight"
+          style={{ fontSize: 'clamp(10px, 2.5vw, 16px)', textShadow: '0 0 8px rgba(255,215,0,0.6)' }}
+        >
+          <span className="sm:hidden">N·N·C</span>
+          <span className="hidden sm:inline">NEON NOIR CASINO</span>
         </Link>
 
         {/* Desktop center nav */}
@@ -152,55 +194,90 @@ export default function Navbar({ activeTab }: NavbarProps) {
           ))}
         </ul>
 
-        {/* Right side */}
-        <div className="flex items-center gap-1 shrink-0 min-w-0">
-          {/* Balance — truncated on tiny screens */}
+        {/* Right cluster */}
+        <div className="flex items-center gap-1.5 shrink-0 min-w-0">
+
+          {/* Balance — always visible */}
           {user && (
-            <span className="font-orbitron text-[11px] text-neon-yellow font-bold whitespace-nowrap max-w-[90px] truncate"
-              style={{ textShadow: '0 0 8px rgba(255,215,0,0.4)' }}>
+            <span
+              className="font-orbitron font-bold text-neon-yellow whitespace-nowrap"
+              style={{ fontSize: 'clamp(9px, 2.2vw, 12px)', textShadow: '0 0 8px rgba(255,215,0,0.4)' }}
+            >
               {formatBalance(balance)}
             </span>
           )}
 
-          {/* Desktop: deposit/withdraw */}
+          {/* Desktop-only: Deposit / Withdraw */}
           {user && (
             <div className="hidden lg:flex items-center gap-2 ml-1">
               <button onClick={() => !polling && setDepositOpen(true)}
                 className="btn-neon px-3 py-1.5 rounded-full text-xs font-orbitron">
                 {polling ? 'PENDING...' : 'DEPOSIT'}
               </button>
-              <button onClick={() => setWithdrawOpen(true)} className="btn-neon px-3 py-1.5 rounded-full text-xs font-orbitron">
+              <button onClick={() => setWithdrawOpen(true)}
+                className="btn-neon px-3 py-1.5 rounded-full text-xs font-orbitron">
                 WITHDRAW
               </button>
             </div>
           )}
 
-          {/* Trophy — hidden on xs, shown sm+ */}
-          <button onClick={() => setLeaderboardOpen(true)} className="hidden xs:flex text-yellow-400 text-base w-7 h-7 items-center justify-center sm:w-8 sm:h-8 sm:text-lg">🏆</button>
+          {/* Desktop-only: Leaderboard */}
+          <button onClick={() => setLeaderboardOpen(true)}
+            className="hidden lg:flex text-yellow-400 text-lg w-8 h-8 items-center justify-center">
+            🏆
+          </button>
 
-          {/* OUT / IN */}
+          {/* Desktop-only: Auth */}
           {user ? (
-            <button onClick={handleSignOut} className="text-gray-400 text-[10px] font-orbitron px-1 hidden xs:block">OUT</button>
+            <button onClick={handleSignOut}
+              className="hidden lg:block text-gray-400 text-[10px] font-orbitron px-1">
+              OUT
+            </button>
           ) : (
-            <button onClick={() => navigate('/auth/login')} className="text-gray-400 text-[10px] font-orbitron px-1 hidden xs:block">LOGIN</button>
+            <div className="hidden lg:flex items-center gap-1">
+              <button onClick={() => navigate('/auth/login')}
+                className="font-orbitron text-[10px] font-bold tracking-wider px-2.5 py-1 rounded-full border border-yellow-400/50 text-yellow-400 hover:bg-yellow-400/10 transition-all">
+                LOGIN
+              </button>
+              <button onClick={() => navigate('/auth/signup')}
+                className="font-orbitron text-[10px] font-bold tracking-wider px-2.5 py-1 rounded-full transition-all"
+                style={{ background: 'linear-gradient(135deg,#FFD700,#FFA500)', color: '#000' }}>
+                SIGN UP
+              </button>
+            </div>
           )}
 
-          {/* Bell — hidden on xs */}
-          <button className="hidden xs:flex text-gray-400 text-base w-7 h-7 items-center justify-center sm:w-8 sm:h-8 sm:text-lg">🔔</button>
+          {/* Desktop-only: Bell + Settings */}
+          <div className="hidden lg:flex items-center gap-1">
+            <NotificationBell />
+            <button onClick={openSettings}
+              className="text-gray-400 hover:text-neon-yellow text-lg w-8 h-8 flex items-center justify-center">
+              ⚙️
+            </button>
+          </div>
 
-          {/* Settings — desktop only */}
-          <button onClick={openSettings} className="hidden lg:flex text-gray-400 hover:text-neon-yellow text-lg w-8 h-8 items-center justify-center">⚙️</button>
+          {/* Mobile: quick login when logged out */}
+          {!user && (
+            <button onClick={() => navigate('/auth/login')}
+              className="lg:hidden font-orbitron text-[10px] font-bold px-2.5 py-1 rounded-full border border-yellow-400/50 text-yellow-400">
+              LOGIN
+            </button>
+          )}
 
-          {/* Hamburger — ALWAYS visible on mobile/tablet, guaranteed last */}
-          <button onClick={() => setMobileMenuOpen(p => !p)}
-            className="lg:hidden text-yellow-400 text-2xl w-9 h-9 flex items-center justify-center font-black shrink-0 ml-1">
+          {/* Hamburger — mobile/tablet only */}
+          <button
+            onClick={() => setMobileMenuOpen((p) => !p)}
+            aria-label="Menu"
+            aria-expanded={mobileMenuOpen}
+            className="lg:hidden flex items-center justify-center w-9 h-9 text-yellow-400 text-2xl font-black shrink-0"
+          >
             {mobileMenuOpen ? '✕' : '☰'}
           </button>
         </div>
       </div>
 
       {/* ── QUICK NAV ICONS (mobile + tablet) ── */}
-      <div className="lg:hidden flex justify-around items-center px-1 py-2 border-t border-white/5">
+      <div data-testid="quick-nav" className={`lg:hidden flex justify-around items-center px-1 py-2 border-t border-white/5${compact ? ' slot-hide' : ''}`}>
         {QUICK_NAV.map(({ label, path, icon }) => (
           <Link key={path} to={path}
             className={`flex flex-col items-center gap-0.5 flex-1 py-2 rounded-xl border transition-colors mx-0.5 ${
@@ -214,50 +291,79 @@ export default function Navbar({ activeTab }: NavbarProps) {
         ))}
       </div>
 
-      {/* ── HAMBURGER SLIDE-DOWN MENU (mobile only) ── */}
+      {/* ── MOBILE DRAWER ── */}
       <AnimatePresence>
         {mobileMenuOpen && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="lg:hidden overflow-hidden border-t border-white/10 bg-black/95 backdrop-blur-md"
-          >
-            <div className="px-4 py-4 flex flex-col gap-3">
-              {/* Deposit & Withdraw only */}
-              {user && (
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => { setDepositOpen(true); setMobileMenuOpen(false); }}
-                    className="flex-1 py-3 rounded-xl font-orbitron text-sm font-bold tracking-widest text-black"
-                    style={{ background: 'linear-gradient(135deg, #FFD700, #FFA500)' }}>
-                    {polling ? 'PENDING...' : '💳 DEPOSIT'}
-                  </button>
-                  <button
-                    onClick={() => { setWithdrawOpen(true); setMobileMenuOpen(false); }}
-                    className="flex-1 py-3 rounded-xl font-orbitron text-sm font-bold tracking-widest border border-red-400/50 text-red-400 hover:bg-red-400/10 transition-colors">
-                    💸 WITHDRAW
-                  </button>
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="lg:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+              onClick={close}
+            />
+
+            {/* Slide-in panel */}
+            <motion.div
+              initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
+              transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+              className="lg:hidden fixed top-0 right-0 bottom-0 w-72 z-50 flex flex-col"
+              style={{
+                background: 'linear-gradient(160deg, #0d0020 0%, #050010 100%)',
+                borderLeft: '1px solid rgba(255,215,0,0.15)',
+                boxShadow: '-8px 0 40px rgba(0,0,0,0.8)',
+              }}
+            >
+              {/* Drawer header */}
+              <div className="flex items-center justify-between px-4 py-4 border-b border-white/10">
+                <div>
+                  <p className="font-orbitron text-[10px] text-white/30 tracking-[0.3em] uppercase">Neon Noir Casino</p>
+                  {user && profile?.username && (
+                    <p className="font-orbitron text-sm text-cyan-400 mt-0.5">{profile.username}</p>
+                  )}
+                  {user && (
+                    <p className="font-orbitron text-xs text-yellow-400 font-bold mt-0.5">{formatBalance(balance)}</p>
+                  )}
                 </div>
-              )}
+                <button onClick={close} className="w-8 h-8 flex items-center justify-center text-white/40 hover:text-white">✕</button>
+              </div>
 
-              {/* Sign in if not logged in */}
-              {!user && (
-                <button onClick={() => { setMobileMenuOpen(false); navigate('/auth/login'); }}
-                  className="w-full py-3 rounded-xl font-orbitron text-sm font-bold tracking-widest text-black"
-                  style={{ background: 'linear-gradient(135deg, #FFD700, #FFA500)' }}>
-                  SIGN IN
-                </button>
-              )}
+              {/* Drawer body */}
+              <div className="flex-1 overflow-y-auto px-3 py-2">
+                {user ? (
+                  <>
+                    <p className="font-orbitron text-[9px] text-yellow-400/50 tracking-[0.2em] uppercase px-1 mt-2 mb-1">Wallet</p>
+                    <MenuRow icon="💳" label={polling ? 'Pending…' : 'Deposit'} onClick={() => { setDepositOpen(true); close(); }} />
+                    <MenuRow icon="💸" label="Withdraw" onClick={() => { setWithdrawOpen(true); close(); }} />
 
-              {/* Username display */}
-              {user && profile?.username && (
-                <p className="text-center text-white/30 text-xs font-orbitron">
-                  Signed in as <span className="text-cyan-400">{profile.username}</span>
-                </p>
-              )}
-            </div>
-          </motion.div>
+                    <div className="my-2 border-t border-white/5" />
+                    <p className="font-orbitron text-[9px] text-yellow-400/50 tracking-[0.2em] uppercase px-1 mb-1">Account</p>
+                    <MenuRow icon="🏆" label="Leaderboard" onClick={() => { setLeaderboardOpen(true); close(); }} />
+                    <MenuRow
+                      icon="🔔"
+                      label={`Notifications${unreadCount > 0 ? ` (${unreadCount})` : ''}`}
+                      onClick={() => { navigate('/notifications'); close(); }}
+                    />
+                    <MenuRow icon="👑" label="VIP Club" onClick={() => { navigate('/vip'); close(); }} />
+                    <MenuRow icon="⚙️" label="Settings" onClick={() => { openSettings(); close(); }} />
+
+                    <div className="my-2 border-t border-white/5" />
+                    <MenuRow icon="🚪" label="Sign Out" onClick={handleSignOut} danger />
+                  </>
+                ) : (
+                  <>
+                    <p className="font-orbitron text-[9px] text-yellow-400/50 tracking-[0.2em] uppercase px-1 mt-2 mb-1">Account</p>
+                    <MenuRow icon="🔑" label="Login" onClick={() => { navigate('/auth/login'); close(); }} />
+                    <MenuRow icon="✨" label="Sign Up" onClick={() => { navigate('/auth/signup'); close(); }} />
+                  </>
+                )}
+              </div>
+
+              {/* Drawer footer */}
+              <div className="px-4 py-3 border-t border-white/5">
+                <p className="text-center text-white/15 text-[10px] font-orbitron">NEON NOIR CASINO</p>
+              </div>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
 

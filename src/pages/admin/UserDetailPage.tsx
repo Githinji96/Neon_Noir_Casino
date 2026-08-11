@@ -104,12 +104,19 @@ export default function UserDetailPage() {
     if (type === 'debit' && profile && amount > profile.balance) { setAdjError('Debit exceeds current balance.'); return; }
     if (!adjReason.trim()) { setAdjError('Reason is required.'); return; }
 
-    const newBalance = (profile?.balance ?? 0) + (type === 'credit' ? amount : -amount);
-    const { error } = await supabase
-      .from('profiles')
-      .update({ balance: newBalance, updated_at: new Date().toISOString() })
-      .eq('id', userId!);
+    const rpcName = type === 'credit' ? 'admin_credit_player' : 'admin_debit_player';
+
+    const { data, error } = await supabase.rpc(rpcName, {
+      p_player_id: userId!,
+      p_amount:    amount,
+      p_reason:    adjReason.trim(),
+      p_admin_id:  adminProfile?.id ?? null,
+    });
+
     if (error) { toast(error.message, 'error'); return; }
+
+    const result = data as { success: boolean; player_balance: number; casino_balance: number };
+    const newBalance = result.player_balance;
 
     await auditLog({
       admin_id: adminProfile?.id ?? null,

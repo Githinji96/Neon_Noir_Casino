@@ -1,5 +1,5 @@
 // Supabase Edge Function: M-Pesa STK Push + Status Query
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from '@supabase/supabase-js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -113,26 +113,109 @@ Deno.serve(async (req) => {
       if (!checkoutRequestId) return json({ error: 'checkoutRequestId required' }, 400);
 
       // ── Sandbox shortcut ────────────────────────────────────────────────
-      // Safaricom sandbox stkpushquery is unreliable — it returns error codes
-      // even for payments that succeeded. In sandbox mode we trust the DB
-      // transaction status directly instead of querying Daraja.
+      // Safaricom sandbox stkpushquery is unreliable but we MUST check it
+      // before crediting. A cancelled push stays 'pending' in our DB because
+      // no callback fires in sandbox. We query Daraja directly first; only
+      // if that also fails do we fall back to timed auto-credit (60s minimum).
       if (SANDBOX) {
         const { data: txn } = await supabase
           .from('transactions')
-          .select('status')
+          .select('status, created_at, amount, user_id')
           .eq('checkout_request_id', checkoutRequestId)
           .single();
 
         if (txn?.status === 'success') return json({ status: 'success' });
         if (txn?.status === 'failed')  return json({ status: 'failed' });
 
-        // In sandbox, auto-credit after ~30s (6 polls × 5s) to simulate payment
-        // The sandbox STK push sends no real callback so we credit here.
-        console.log('[mpesa-stk] Sandbox: auto-crediting pending transaction', checkoutRequestId);
+        // Try querying Daraja sandbox — it sometimes works and will return
+        // ResultCode 1032 for a cancelled push
+        try {
+          const timestamp = getTimestamp();
+          const password  = btoa(`${SHORTCODE}${PASSKEY}${timestamp}`);
+          const token     = await getAccessToken(DARAJA_BASE, CONSUMER_KEY, CONSUMER_SECRET);
 
+          const queryRes = await fetchWithRetry(`${DARAJA_BASE}/mpesa/stkpushquery/v1/query`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              BusinessShortCode: SHORTCODE,
+              Password: password,
+              Timestamp: timestamp,
+              CheckoutRequestID: checkoutRequestId,
+            }),
+          }, 2);
+
+          const queryData = await queryRes.json();
+          const resultCode = String(queryData.ResultCode ?? queryData.errorCode ?? '');
+          console.log('[mpesa-stk] Sandbox Daraja query result:', resultCode, queryData);
+
+          // Confirmed cancelled by Daraja
+          if (['1032', '1037', '2001', '17', '1'].includes(resultCode)) {
+            await supabase
+              .from('transactions')
+              .update({ status: 'failed' })
+              .eq('checkout_request_id', checkoutRequestId)
+              .eq('status', 'pending');
+            return json({ status: 'failed' });
+          }
+
+          // Confirmed paid by Daraja
+          if (resultCode === '0') {
+            const { data: pendingTxn } = await supabase
+              .from('transactions')
+              .update({
+                status: 'success',
+                mpesa_receipt: queryData.MpesaReceiptNumber ?? `DARAJA-${checkoutRequestId.slice(-8).toUpperCase()}`,
+              })
+              .eq('checkout_request_id', checkoutRequestId)
+              .eq('status', 'pending')
+              .select('user_id, amount')
+              .single();
+
+            if (pendingTxn) {
+              const { data: profile } = await supabase
+                .from('profiles')
+                .select('balance')
+                .eq('id', pendingTxn.user_id)
+                .single();
+              if (profile) {
+                await supabase
+                  .from('profiles')
+                  .update({
+                    balance: Math.round(((profile.balance ?? 0) + pendingTxn.amount) * 100) / 100,
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq('id', pendingTxn.user_id);
+              }
+              return json({ status: 'success' });
+            }
+            return json({ status: 'success' }); // already credited
+          }
+          // Daraja returned inconclusive — fall through to time-based check
+        } catch (queryErr) {
+          console.warn('[mpesa-stk] Sandbox Daraja query failed:', queryErr);
+          // Fall through to time-based check
+        }
+
+        // Time-based fallback: only auto-credit if the transaction is
+        // at least 60 seconds old — gives the user time to cancel.
+        // Cancelled pushes in sandbox stay 'pending' forever, so we
+        // treat anything older than 60s as a confirmed payment.
+        const createdAt = txn?.created_at ? new Date(txn.created_at).getTime() : 0;
+        const ageSeconds = (Date.now() - createdAt) / 1000;
+
+        if (ageSeconds < 60) {
+          console.log(`[mpesa-stk] Sandbox: transaction only ${ageSeconds.toFixed(0)}s old, waiting...`);
+          return json({ status: 'pending' });
+        }
+
+        // Older than 60s and still pending — credit the account
+        console.log(`[mpesa-stk] Sandbox: auto-crediting after ${ageSeconds.toFixed(0)}s`, checkoutRequestId);
+
+        const sandboxReceipt = `SANDBOX-${Date.now().toString(36).toUpperCase().slice(-8)}`;
         const { data: pendingTxn } = await supabase
           .from('transactions')
-          .update({ status: 'success' })
+          .update({ status: 'success', mpesa_receipt: sandboxReceipt })
           .eq('checkout_request_id', checkoutRequestId)
           .eq('status', 'pending')
           .select('user_id, amount')
@@ -156,8 +239,7 @@ Deno.serve(async (req) => {
           }
           return json({ status: 'success' });
         }
-        // Already credited
-        return json({ status: 'success' });
+        return json({ status: 'success' }); // already credited
       }
 
       // ── Production: query Daraja for real status ─────────────────────
@@ -183,7 +265,10 @@ Deno.serve(async (req) => {
       if (resultCode === '0') {
         const { data: txn } = await supabase
           .from('transactions')
-          .update({ status: 'success' })
+          .update({
+            status: 'success',
+            mpesa_receipt: queryData.MpesaReceiptNumber ?? null,
+          })
           .eq('checkout_request_id', checkoutRequestId)
           .eq('status', 'pending')
           .select('user_id, amount')
@@ -222,16 +307,57 @@ Deno.serve(async (req) => {
     }
 
     // ── STK Push ──────────────────────────────────────────────────────────
-    const { phone, amount, userId } = body;
+    const { amount } = body;
 
-    if (!phone || !/^2547\d{8}$/.test(phone)) {
-      return json({ error: `Invalid phone number "${phone}". Expected format: 2547XXXXXXXX` }, 400);
-    }
     if (!amount || Number(amount) < 10) {
       return json({ error: 'Minimum deposit is KES 10' }, 400);
     }
-    if (!userId) {
-      return json({ error: 'userId is required' }, 400);
+
+    // ── Always get phone from authenticated user's profile — never trust client ──
+    // Verify the JWT using supabase.auth.getUser() — this validates the signature
+    // server-side, unlike manual atob() decode which can be spoofed.
+    const authHeader = req.headers.get('authorization') ?? '';
+    const jwt = authHeader.replace(/^Bearer\s+/i, '');
+    if (!jwt) {
+      return json({ error: 'Missing authentication token.' }, 401);
+    }
+
+    // Create an anon client to verify the JWT (uses Supabase's auth server)
+    const anonClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+    );
+    const { data: { user: callerUser }, error: authErr } = await anonClient.auth.getUser(jwt);
+
+    if (authErr || !callerUser?.id) {
+      console.error('[mpesa-stk] JWT verification failed:', authErr?.message);
+      return json({ error: 'Invalid or expired authentication token.' }, 401);
+    }
+    const callerUserId = callerUser.id;
+
+    // Fetch the verified phone from the database
+    const { data: playerProfile, error: profileErr } = await supabase
+      .from('profiles')
+      .select('phone, phone_verified, account_status')
+      .eq('id', callerUserId)
+      .single();
+
+    if (profileErr || !playerProfile) {
+      return json({ error: 'Player profile not found.' }, 404);
+    }
+    if (playerProfile.account_status === 'banned' || playerProfile.account_status === 'suspended') {
+      return json({ error: 'Account is not active.' }, 403);
+    }
+    if (!playerProfile.phone) {
+      return json({ error: 'No M-Pesa number registered on your account. Please add one in Account Settings.' }, 400);
+    }
+
+    // Normalise the DB phone to 2547XXXXXXXX
+    const rawPhone = playerProfile.phone.replace(/\D/g, '');
+    const serverPhone = rawPhone.startsWith('254') ? rawPhone : '254' + rawPhone;
+
+    if (!/^2547\d{8}$/.test(serverPhone)) {
+      return json({ error: `Registered phone number (${playerProfile.phone}) is not a valid Kenyan M-Pesa number. Please update it in Account Settings.` }, 400);
     }
 
     const timestamp = getTimestamp();
@@ -244,9 +370,9 @@ Deno.serve(async (req) => {
       Timestamp: timestamp,
       TransactionType: 'CustomerPayBillOnline',
       Amount: Math.floor(Number(amount)),
-      PartyA: phone,
+      PartyA: serverPhone,
       PartyB: SHORTCODE,
-      PhoneNumber: phone,
+      PhoneNumber: serverPhone,
       CallBackURL: CALLBACK_URL,
       AccountReference: 'NeonNoir',
       TransactionDesc: 'NeonNoir Casino Deposit',
@@ -274,12 +400,12 @@ Deno.serve(async (req) => {
       }, 400);
     }
 
-    // Record the pending transaction with type so admin dashboard can filter
+    // Record the pending transaction with the server-verified phone
     const { error: insertError } = await supabase.from('transactions').insert({
-      user_id: userId,
-      phone,
-      amount: Number(amount),
-      type: 'deposit',
+      user_id: callerUserId,
+      phone:   serverPhone,
+      amount:  Number(amount),
+      type:    'deposit',
       status: 'pending',
       checkout_request_id: stkData.CheckoutRequestID,
     });

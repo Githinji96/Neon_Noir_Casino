@@ -26,11 +26,8 @@ export default function JackpotCard({ name, amount, tags, onSpinNow }: JackpotCa
     <motion.div
       whileHover={{ scale: 1.03, boxShadow: '0 0 32px rgba(255,215,0,0.25)' }}
       transition={{ type: 'spring', stiffness: 300, damping: 22 }}
-      className="flex flex-col gap-4 p-5 rounded-2xl shrink-0"
+      className="flex flex-col gap-4 p-5 rounded-2xl w-full"
       style={{
-        minWidth: 'min(200px, 60vw)',
-        maxWidth: '220px',
-        scrollSnapAlign: 'start',
         background: 'linear-gradient(160deg, #0d0020 0%, #050010 100%)',
         border: '1px solid rgba(255,255,255,0.08)',
         boxShadow: '0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06)',

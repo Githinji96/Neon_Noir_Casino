@@ -13,6 +13,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard',    path: '/admin/dashboard',    icon: '📊', roles: ['super_admin', 'finance_admin'] },
   { label: 'Users',        path: '/admin/users',         icon: '👥', roles: ['super_admin', 'support_agent'] },
   { label: 'Finance',      path: '/admin/finance',       icon: '💰', roles: ['super_admin', 'finance_admin'] },
+  { label: 'Casino Funds', path: '/admin/casino-financial', icon: '🏦', roles: ['super_admin', 'finance_admin'] },
   { label: 'Withdrawals',  path: '/admin/withdrawals',   icon: '💸', roles: ['super_admin', 'finance_admin'] },
   { label: 'Games',        path: '/admin/games',         icon: '🎰', roles: ['super_admin', 'game_manager'] },
   { label: 'RTP Control',  path: '/admin/rtp',           icon: '📈', roles: ['super_admin', 'game_manager'] },

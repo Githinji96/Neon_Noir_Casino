@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../store/authStore';
 
@@ -8,34 +9,24 @@ interface AuthModalProps {
 }
 
 export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [username, setUsername] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState('');
 
-  const { signIn, signUp } = useAuthStore();
+  const { signIn } = useAuthStore();
+  const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setSuccess('');
     setLoading(true);
 
-    let err: string | null = null;
-    if (mode === 'signin') {
-      err = await signIn(email, password);
-    } else {
-      if (!username.trim()) { setError('Username is required'); setLoading(false); return; }
-      err = await signUp(email, password, username);
-      if (!err) setSuccess('Check your email to confirm your account.');
-    }
+    const err = await signIn(email, password);
 
     setLoading(false);
     if (err) { setError(err); return; }
-    if (mode === 'signin') onClose();
+    onClose();
   };
 
   const inputClass =
@@ -55,19 +46,10 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="font-orbitron text-xl font-bold text-yellow-300 tracking-widest text-center mb-6">
-              {mode === 'signin' ? 'SIGN IN' : 'CREATE ACCOUNT'}
+              SIGN IN
             </h2>
 
             <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-              {mode === 'signup' && (
-                <input
-                  className={inputClass}
-                  placeholder="Username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  autoComplete="username"
-                />
-              )}
               <input
                 className={inputClass}
                 type="email"
@@ -83,29 +65,28 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
                 placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+                autoComplete="current-password"
                 required
               />
 
               {error && <p className="text-red-400 text-xs text-center">{error}</p>}
-              {success && <p className="text-green-400 text-xs text-center">{success}</p>}
 
               <button
                 type="submit"
                 disabled={loading}
                 className="mt-2 w-full py-2.5 rounded-lg font-orbitron text-sm font-bold tracking-widest bg-yellow-400 text-black hover:bg-yellow-300 disabled:opacity-50 transition-colors"
               >
-                {loading ? '...' : mode === 'signin' ? 'SIGN IN' : 'SIGN UP'}
+                {loading ? '...' : 'SIGN IN'}
               </button>
             </form>
 
             <p className="text-center text-gray-500 text-xs mt-4">
-              {mode === 'signin' ? "Don't have an account? " : 'Already have an account? '}
+              Don&apos;t have an account?{' '}
               <button
                 className="text-yellow-400 hover:text-yellow-300 transition-colors"
-                onClick={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setError(''); setSuccess(''); }}
+                onClick={() => { navigate('/auth/signup'); onClose(); }}
               >
-                {mode === 'signin' ? 'Sign up' : 'Sign in'}
+                Sign up
               </button>
             </p>
           </motion.div>

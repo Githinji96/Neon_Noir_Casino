@@ -118,34 +118,49 @@ interface AdminState {
 
 export const useAdminStore = create<AdminState>((set, get) => ({
   adminProfile: null,
-  loading: false,  // start false — guard only shows spinner when actively loading
+  // Start as true — on any page load we don't know yet if there's a valid admin session.
+  // init() will set it to false once it resolves (with or without a profile).
+  // This prevents the guard from immediately redirecting to /admin/login on refresh
+  // before init() has had a chance to check localStorage/session.
+  loading: true,
   alerts: [],
   unreadAlertCount: 0,
 
   init: async () => {
-    // Don't reset adminProfile if already set — prevents flicker redirect
+    // If profile already set (inter-page navigation), skip re-init but clear loading
     const already = get().adminProfile;
-    set({ loading: !already });
+    if (already) {
+      set({ loading: false });
+      return;
+    }
+
+    set({ loading: true });
     try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError) {
-        console.error('[adminStore.init] getUser error:', userError.message);
-        set({ adminProfile: null, loading: false });
-        return;
-      }
+      // Use getSession() (reads localStorage cache — no network round-trip)
+      // Only fall back to getUser() if session is missing.
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user ?? null;
+
       if (!user) {
         set({ adminProfile: null, loading: false });
         return;
       }
 
+      // Fetch profile + alerts in parallel to halve the wait time
       const profilePromise = supabase
         .from('profiles')
         .select('id, username, admin_role')
         .eq('id', user.id)
         .single();
 
+      const alertsPromise = supabase
+        .from('admin_alerts')
+        .select('*')
+        .eq('resolved', false)
+        .order('created_at', { ascending: false });
+
       const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Profile fetch timeout')), 10000)
+        setTimeout(() => reject(new Error('Profile fetch timeout')), 5000)
       );
 
       let profile: { id: string; username: string; admin_role: string } | null = null;
@@ -157,9 +172,6 @@ export const useAdminStore = create<AdminState>((set, get) => ({
         profileError = result.error as { message: string; code: string } | null;
         if (profileError) {
           console.error('[adminStore.init] profile query error:', profileError.code, profileError.message);
-        }
-        if (!profile && !profileError) {
-          console.warn('[adminStore.init] profile query returned null data with no error — RLS likely blocking the row');
         }
       } catch (e) {
         profileError = { message: String(e), code: 'TIMEOUT' };
@@ -184,6 +196,7 @@ export const useAdminStore = create<AdminState>((set, get) => ({
         return;
       }
 
+      // Set profile immediately — don't wait for alerts
       set({
         adminProfile: {
           id: profile.id,
@@ -193,16 +206,13 @@ export const useAdminStore = create<AdminState>((set, get) => ({
         loading: false,
       });
 
-      // Load initial alerts
-      const { data: alerts } = await supabase
-        .from('admin_alerts')
-        .select('*')
-        .eq('resolved', false)
-        .order('created_at', { ascending: false });
+      // Resolve alerts in background (already in-flight from the parallel fetch)
+      void alertsPromise.then(({ data: alerts }) => {
+        if (alerts) {
+          set({ alerts: alerts as AdminAlert[], unreadAlertCount: alerts.length });
+        }
+      });
 
-      if (alerts) {
-        set({ alerts: alerts as AdminAlert[], unreadAlertCount: alerts.length });
-      }
     } catch (err) {
       console.error('[adminStore.init] unexpected error:', err);
       set({ adminProfile: null, loading: false });

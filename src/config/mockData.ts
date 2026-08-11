@@ -32,7 +32,9 @@ export const JACKPOT_GAME_IDS = new Set([
   'neon-samurai',
 ]);
 
-// IDs of popular choice games — exclude from near-miss notifications
+// IDs of popular choice games shown in the Popular Choices section
+// NOTE: these are purely for UI display grouping — near-miss detection
+// is controlled separately by JACKPOT_GAME_IDS
 export const POPULAR_GAME_IDS = new Set([
   'cyber-strike-777',
   'neon-samurai',

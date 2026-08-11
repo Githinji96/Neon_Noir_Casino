@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import ParticleBackground from '../components/ParticleBackground';
 import Navbar from '../components/Navbar';
 import BottomNav from '../components/BottomNav';
@@ -15,15 +15,28 @@ interface CasinoLobbyProps {
 
 export default function CasinoLobby({ onNavigateToSlot }: CasinoLobbyProps) {
   const subscribeToWinBroadcasts = useJackpotStore((s) => s.subscribeToWinBroadcasts);
+  // ref points at the PopularChoicesSection DOM node
+  const popularRef = useRef<HTMLElement>(null);
 
-  // Subscribe to jackpot win broadcasts on mount
   useEffect(() => {
     const unsubscribe = subscribeToWinBroadcasts();
     return unsubscribe;
   }, [subscribeToWinBroadcasts]);
 
+  function handleSeeAll() {
+    if (!popularRef.current) return;
+    // Offset for the sticky navbar (~48px)
+    const top = popularRef.current.getBoundingClientRect().top + window.scrollY - 56;
+    window.scrollTo({ top, behavior: 'smooth' });
+    // Trigger the brief heading glow on arrival
+    setTimeout(() => {
+      (popularRef as unknown as React.MutableRefObject<{ highlight?: () => void }>)
+        .current?.highlight?.();
+    }, 600);
+  }
+
   return (
-    <div className="relative bg-black min-h-screen overflow-x-hidden">
+    <div className="relative bg-black min-h-screen">
       <ParticleBackground />
       <Navbar />
       <JackpotWinToast />
@@ -31,10 +44,9 @@ export default function CasinoLobby({ onNavigateToSlot }: CasinoLobbyProps) {
       <main className="bg-gradient-to-b from-casino-dark to-black pb-24 md:pb-0">
         <HeroSection onPlayNow={() => onNavigateToSlot()} />
 
-        <NewArrivalsSection onGameClick={onNavigateToSlot} />
-        <PopularChoicesSection onGameClick={onNavigateToSlot} />
+        <NewArrivalsSection onGameClick={onNavigateToSlot} onSeeAll={handleSeeAll} />
+        <PopularChoicesSection onGameClick={onNavigateToSlot} sectionRef={popularRef} />
 
-        {/* Full-width so the scroll row isn't clipped by the max-width container */}
         <ProgressiveJackpotsSection onSpinNow={(id, title) => onNavigateToSlot(id, title, true)} />
       </main>
 

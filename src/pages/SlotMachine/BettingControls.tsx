@@ -56,8 +56,9 @@ export default function BettingControls() {
   }
 
   return (
-    <div className="flex flex-col items-center gap-1">
-      <span className="text-xs text-gray-400 uppercase tracking-widest" style={{ fontVariant: 'small-caps' }}>
+    <div className="flex flex-col items-center shrink-0 w-full">
+      {/* BET AMOUNT label — centered over the entire row */}
+      <span className="text-xs text-gray-400 uppercase tracking-widest font-orbitron mb-1 mt-3 text-center w-full">
         Bet Amount
       </span>
 
@@ -113,12 +114,12 @@ export default function BettingControls() {
           </p>
         </div>
       ) : (
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-4">
           <button
             onClick={() => setBet('down')}
             disabled={isMin || isSpinning}
-            className={`w-10 h-10 rounded-full bg-white/10 border border-white/20 flex items-center justify-center text-white text-lg transition-colors
-              ${isMin || isSpinning ? 'opacity-30 cursor-not-allowed' : 'hover:bg-white/20'}`}
+            className={`w-11 h-11 rounded-full bg-gray-800 border border-gray-600 flex items-center justify-center text-white text-xl transition-colors
+              ${isMin || isSpinning ? 'opacity-30 cursor-not-allowed' : 'hover:bg-gray-700'}`}
             aria-label="Decrease bet"
           >
             −
@@ -128,7 +129,7 @@ export default function BettingControls() {
             onClick={openEditor}
             disabled={isSpinning}
             title="Click to type a custom bet"
-            className="text-xl sm:text-2xl font-orbitron text-neon-yellow font-bold min-w-[130px] text-center hover:opacity-80 transition-opacity disabled:cursor-not-allowed underline decoration-dotted underline-offset-4 decoration-yellow-600"
+            className="text-2xl font-orbitron text-yellow-400 font-bold min-w-[140px] text-center hover:opacity-80 transition-opacity disabled:cursor-not-allowed underline decoration-dotted underline-offset-4 decoration-yellow-600"
             style={{ textShadow: '0 0 8px rgba(255,215,0,0.6)' }}
           >
             KES {bet.toFixed(2)}
@@ -137,8 +138,8 @@ export default function BettingControls() {
           <button
             onClick={() => setBet('up')}
             disabled={isMax || isSpinning}
-            className={`w-10 h-10 rounded-full bg-white/10 border border-white/20 flex items-center justify-center text-white text-lg transition-colors
-              ${isMax || isSpinning ? 'opacity-30 cursor-not-allowed' : 'hover:bg-white/20'}`}
+            className={`w-11 h-11 rounded-full bg-gray-800 border border-gray-600 flex items-center justify-center text-white text-xl transition-colors
+              ${isMax || isSpinning ? 'opacity-30 cursor-not-allowed' : 'hover:bg-gray-700'}`}
             aria-label="Increase bet"
           >
             +

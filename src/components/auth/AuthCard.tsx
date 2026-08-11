@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
 import { ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 interface AuthCardProps {
   children: ReactNode;
@@ -8,6 +9,8 @@ interface AuthCardProps {
 }
 
 export default function AuthCard({ children, title, subtitle }: AuthCardProps) {
+  const navigate = useNavigate();
+
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-12 relative overflow-hidden"
       style={{ background: 'linear-gradient(135deg, #0a0010 0%, #0d0020 40%, #050015 100%)' }}>
@@ -37,13 +40,24 @@ export default function AuthCard({ children, title, subtitle }: AuthCardProps) {
         </div>
 
         {/* Card */}
-        <div className="rounded-2xl p-8 border"
+        <div className="rounded-2xl p-8 border relative"
           style={{
             background: 'rgba(255,255,255,0.04)',
             backdropFilter: 'blur(20px)',
             borderColor: 'rgba(255,255,255,0.08)',
             boxShadow: '0 8px 64px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.06)',
           }}>
+
+          {/* ✕ Close / Cancel button */}
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            aria-label="Close"
+            className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center text-white/30 hover:text-white hover:bg-white/10 transition-all text-lg leading-none"
+          >
+            ✕
+          </button>
+
           <div className="mb-6">
             <h2 className="font-orbitron text-xl font-bold text-white tracking-wider">{title}</h2>
             {subtitle && <p className="text-gray-400 text-sm mt-1">{subtitle}</p>}

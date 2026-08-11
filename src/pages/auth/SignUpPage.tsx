@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Link, useNavigate } from 'react-router-dom';
 import AuthCard from '../../components/auth/AuthCard';
@@ -7,61 +7,147 @@ import InputField from '../../components/auth/InputField';
 import PasswordField from '../../components/auth/PasswordField';
 import AuthButton from '../../components/auth/AuthButton';
 import AuthAlert from '../../components/auth/AuthAlert';
-import SelectField from '../../components/auth/SelectField';
-import { CURRENCIES } from '../../config/localeData';
-import { useCountries } from '../../hooks/useCountries';
-import { signUpSchema, type SignUpFormData } from '../../services/authSchemas';
+import { signUpSchema, type SignUpFormData, normalizeKenyanPhone } from '../../services/authSchemas';
 import { useAuthStore } from '../../store/authStore';
+import { supabase } from '../../lib/supabase';
 
 export default function SignUpPage() {
-  const navigate = useNavigate();
-  const { signUp, signInWithOAuth } = useAuthStore();
-  const { countries, loading: countriesLoading } = useCountries();
+  const navigate   = useNavigate();
+  const { signUp } = useAuthStore();
+
   const [serverError, setServerError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [oauthLoading, setOauthLoading] = useState<'google' | 'apple' | null>(null);
+  const [success, setSuccess]         = useState(false);
+  const [loading, setLoading]         = useState(false);
 
-  const handleOAuth = async (provider: 'google' | 'apple') => {
-    setServerError('');
-    setOauthLoading(provider);
-    const err = await signInWithOAuth(provider);
-    setOauthLoading(null);
-    if (err) setServerError(err);
-  };
-
-  const { register, handleSubmit, watch, control, setValue, formState: { errors } } = useForm<SignUpFormData>({
+  const {
+    register,
+    handleSubmit,
+    watch,
+    formState: { errors, isValid },
+  } = useForm<SignUpFormData>({
     resolver: zodResolver(signUpSchema),
+    mode: 'onChange', // validate on every keystroke for real-time feedback
   });
 
   const passwordValue = watch('password', '');
 
+  // ── Max date for DOB — must be 18+ ─────────────────────────────────────
+  const maxDOB = (() => {
+    const d = new Date();
+    d.setFullYear(d.getFullYear() - 18);
+    return d.toISOString().split('T')[0];
+  })();
+
   const onSubmit = async (data: SignUpFormData) => {
     setServerError('');
     setLoading(true);
-    const err = await signUp(data.email, data.password, data.username, data.phone ?? '');
+
+    // Normalise phone to 2547XXXXXXXX before saving
+    const normalizedPhone = normalizeKenyanPhone(data.phone);
+
+    const err = await signUp(
+      data.email.toLowerCase().trim(),
+      data.password,
+      data.username.trim(),
+      normalizedPhone,
+      data.firstName.trim(),
+      data.lastName.trim(),
+      data.dateOfBirth,
+    );
+
     setLoading(false);
     if (err) {
       setServerError(err);
-    } else {
-      navigate('/');
+      return;
     }
+
+    // Phone is written by the DB trigger via raw_user_meta_data.
+    // As a belt-and-braces fallback, also write it directly once the
+    // session is established. We use signInWithPassword immediately after
+    // signUp (Supabase auto-confirms in dev; in prod with email confirm the
+    // session won't exist yet so the update is a no-op and that's fine).
+    if (normalizedPhone) {
+      try {
+        // Give the trigger up to 3 seconds to create the profile row
+        for (let attempt = 0; attempt < 3; attempt++) {
+          await new Promise((r) => setTimeout(r, 800));
+          const { data: { user: sessionUser } } = await supabase.auth.getUser();
+          if (!sessionUser?.id) continue;
+
+          const { error: phoneErr } = await supabase
+            .from('profiles')
+            .update({ phone: normalizedPhone, phone_verified: true })
+            .eq('id', sessionUser.id)
+            .is('phone', null);   // only patch if phone is still null (avoid overwriting)
+
+          if (!phoneErr) break;
+        }
+      } catch {
+        // silent — phone will be backfilled on next login via refreshBalance
+      }
+    }
+
+    setSuccess(true);
+    setTimeout(() => navigate('/'), 2500);
   };
 
+  // ── Success screen ──────────────────────────────────────────────────────
+  if (success) {
+    return (
+      <AuthCard title="" subtitle="">
+        <div className="flex flex-col items-center text-center gap-5 py-4">
+          <span className="text-6xl">🎉</span>
+          <div>
+            <h2 className="font-orbitron text-2xl font-bold text-yellow-400 tracking-wider mb-2">
+              WELCOME TO NEON NOIR!
+            </h2>
+            <p className="text-white/70 text-sm leading-relaxed">
+              Your account has been created successfully.<br />
+              Redirecting you to the casino…
+            </p>
+          </div>
+          <div className="w-8 h-8 rounded-full border-2 border-yellow-400 border-t-transparent animate-spin" />
+        </div>
+      </AuthCard>
+    );
+  }
+
   return (
-    <AuthCard title="Create Account" subtitle="Join Neon Noir Casino and start playing">
-      <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+    <AuthCard title="Create Account" subtitle="Join Neon Noir Casino — it's free">
+      <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4" noValidate>
+
         {serverError && <AuthAlert type="error" message={serverError} />}
 
+        {/* First + Last name */}
+        <div className="grid grid-cols-2 gap-3">
+          <InputField
+            label="First Name"
+            placeholder="John"
+            icon="👤"
+            error={errors.firstName?.message}
+            {...register('firstName')}
+          />
+          <InputField
+            label="Last Name"
+            placeholder="Doe"
+            icon="👤"
+            error={errors.lastName?.message}
+            {...register('lastName')}
+          />
+        </div>
+
+        {/* Username */}
         <InputField
           label="Username"
           placeholder="CyberPlayer99"
-          icon="👤"
+          icon="🎮"
           error={errors.username?.message}
           {...register('username')}
         />
 
+        {/* Email */}
         <InputField
-          label="Email"
+          label="Email Address"
           type="email"
           placeholder="player@example.com"
           icon="✉️"
@@ -69,30 +155,65 @@ export default function SignUpPage() {
           {...register('email')}
         />
 
-        <div className="flex flex-col gap-1">
-          <label className="font-orbitron text-xs text-white/60 tracking-widest uppercase">Phone (M-Pesa)</label>
-          <div className="flex items-center rounded-xl overflow-hidden border border-white/10 focus-within:border-yellow-400/60 transition-all bg-white/5">
-            <span className="px-3 py-3 text-sm text-yellow-400 font-orbitron font-bold border-r border-white/10 shrink-0">+254</span>
+        {/* Phone — M-Pesa */}
+        <div className="flex flex-col gap-1.5">
+          <label className="font-orbitron text-xs text-gray-400 tracking-wider uppercase">
+            M-Pesa Number <span className="text-yellow-400">*</span>
+          </label>
+          <div className={`flex items-center rounded-xl overflow-hidden border transition-all bg-white/5
+            ${errors.phone
+              ? 'border-red-500/60'
+              : 'border-white/10 focus-within:border-yellow-400/60'}`}>
+            <span className="px-3 py-3 text-sm text-yellow-400 font-orbitron font-bold border-r border-white/10 shrink-0">
+              +254
+            </span>
             <input
               type="tel"
-              placeholder="7XXXXXXXX"
+              inputMode="numeric"
+              placeholder="712 345 678"
               className="flex-1 px-3 py-3 text-sm text-white placeholder-gray-600 outline-none bg-transparent"
               {...register('phone')}
             />
           </div>
-          {errors.phone && <p className="text-red-400 text-xs">{errors.phone.message}</p>}
-          <p className="text-white/20 text-xs">Used to pre-fill M-Pesa deposits</p>
+          {errors.phone
+            ? <p className="text-red-400 text-xs flex items-center gap-1"><span>⚠</span> {errors.phone.message}</p>
+            : <p className="text-white/25 text-xs">This becomes your verified withdrawal number</p>}
         </div>
 
+        {/* Date of Birth */}
+        <div className="flex flex-col gap-1.5">
+          <label className="font-orbitron text-xs text-gray-400 tracking-wider uppercase">
+            Date of Birth <span className="text-yellow-400">*</span>
+          </label>
+          <input
+            type="date"
+            max={maxDOB}
+            className={`w-full rounded-xl px-4 py-3 text-sm text-white outline-none transition-all
+              bg-white/5 border focus:bg-white/8
+              ${errors.dateOfBirth
+                ? 'border-red-500/60 focus:border-red-400'
+                : 'border-white/10 focus:border-yellow-400/60'}`}
+            style={{ colorScheme: 'dark' }}
+            {...register('dateOfBirth')}
+          />
+          {errors.dateOfBirth && (
+            <p className="text-red-400 text-xs flex items-center gap-1">
+              <span>⚠</span> {errors.dateOfBirth.message}
+            </p>
+          )}
+        </div>
+
+        {/* Password */}
         <PasswordField
           label="Password"
-          placeholder="Min 8 chars, 1 number, 1 special"
+          placeholder="Min 8 chars, uppercase, number, symbol"
           error={errors.password?.message}
           showStrength
           watchedValue={passwordValue}
           {...register('password')}
         />
 
+        {/* Confirm password */}
         <PasswordField
           label="Confirm Password"
           placeholder="Repeat your password"
@@ -100,48 +221,20 @@ export default function SignUpPage() {
           {...register('confirmPassword')}
         />
 
-        {/* Country + Currency */}
-        <div className="grid grid-cols-2 gap-3">
-          <Controller
-            name="country"
-            control={control}
-            defaultValue=""
-            render={({ field }) => (
-              <SelectField
-                label="Country"
-                value={field.value ?? ''}
-                onChange={(val) => {
-                  field.onChange(val);
-                  // Auto-set currency based on country
-                  const country = countries.find((c) => c.value === val);
-                  if (country?.currency) {
-                    const match = CURRENCIES.find((c) => c.value === country.currency);
-                    if (match) setValue('currency', match.value);
-                  }
-                }}
-                options={countries}
-                placeholder="Select country"
-                searchable
-                loading={countriesLoading}
-              />
-            )}
+        {/* Age confirmation */}
+        <label className="flex items-start gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            {...register('ageConfirm')}
+            className="w-4 h-4 mt-0.5 rounded accent-yellow-400 shrink-0"
           />
-          <Controller
-            name="currency"
-            control={control}
-            defaultValue="USD"
-            render={({ field }) => (
-              <SelectField
-                label="Currency"
-                value={field.value ?? 'USD'}
-                onChange={field.onChange}
-                options={CURRENCIES}
-                placeholder="Select currency"
-                searchable
-              />
-            )}
-          />
-        </div>
+          <span className="text-gray-400 text-xs leading-relaxed">
+            I confirm that I am at least <span className="text-white font-semibold">18 years old</span>
+          </span>
+        </label>
+        {errors.ageConfirm && (
+          <p className="text-red-400 text-xs -mt-2">⚠ {errors.ageConfirm.message}</p>
+        )}
 
         {/* Terms */}
         <label className="flex items-start gap-2 cursor-pointer">
@@ -152,23 +245,13 @@ export default function SignUpPage() {
           />
           <span className="text-gray-400 text-xs leading-relaxed">
             I have read and agree to the{' '}
-            <Link
-              to="/terms"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline hover:opacity-80 transition-opacity"
-              style={{ color: '#FFD700' }}
-            >
+            <Link to="/terms" target="_blank" rel="noopener noreferrer"
+              className="underline hover:opacity-80 transition-opacity" style={{ color: '#FFD700' }}>
               Terms & Conditions
             </Link>
             {' '}and{' '}
-            <Link
-              to="/privacy-policy"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline hover:opacity-80 transition-opacity"
-              style={{ color: '#FFD700' }}
-            >
+            <Link to="/privacy-policy" target="_blank" rel="noopener noreferrer"
+              className="underline hover:opacity-80 transition-opacity" style={{ color: '#FFD700' }}>
               Privacy Policy
             </Link>
           </span>
@@ -177,46 +260,10 @@ export default function SignUpPage() {
           <p className="text-red-400 text-xs -mt-2">⚠ {errors.terms.message}</p>
         )}
 
-        <AuthButton type="submit" loading={loading}>
+        {/* Submit — disabled until all fields valid */}
+        <AuthButton type="submit" loading={loading} disabled={!isValid || loading}>
           CREATE ACCOUNT
         </AuthButton>
-
-        {/* Divider */}
-        <div className="flex items-center gap-3">
-          <div className="flex-1 h-px bg-white/10" />
-          <span className="text-gray-600 text-xs">OR</span>
-          <div className="flex-1 h-px bg-white/10" />
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <AuthButton
-            type="button"
-            variant="secondary"
-            loading={oauthLoading === 'google'}
-            disabled={!!oauthLoading || loading}
-            onClick={() => handleOAuth('google')}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-              <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-              <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-              <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
-              <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-            </svg>
-            Google
-          </AuthButton>
-          <AuthButton
-            type="button"
-            variant="secondary"
-            loading={oauthLoading === 'apple'}
-            disabled={!!oauthLoading || loading}
-            onClick={() => handleOAuth('apple')}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
-            </svg>
-            Apple
-          </AuthButton>
-        </div>
 
         <p className="text-center text-gray-500 text-xs">
           Already have an account?{' '}

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import JackpotDetailsModal from '../components/JackpotDetailsModal';
 import { useJackpotStore } from '../store/jackpotStore';
+import { useAuthStore } from '../store/authStore';
 
 interface HeroSectionProps {
   onPlayNow: () => void;
@@ -12,6 +13,7 @@ const formatJackpot = (value: number): string =>
 
 export default function HeroSection({ onPlayNow }: HeroSectionProps) {
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const { user: _user } = useAuthStore();
 
   // Use live jackpot amount from store (grows in real time)
   const jackpots = useJackpotStore((s) => s.jackpots);
@@ -95,6 +97,7 @@ export default function HeroSection({ onPlayNow }: HeroSectionProps) {
             DETAILS
           </button>
         </motion.div>
+
       </div>
 
       <JackpotDetailsModal

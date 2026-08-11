@@ -62,7 +62,6 @@ body {
 #root {
   min-height: 100vh;
   background: linear-gradient(135deg, #0a0a0f 0%, #12082a 50%, #0d0d1a 100%);
-  overflow-x: hidden;
 }
 
 /* ── Utility Classes ── */
@@ -274,4 +273,54 @@ body {
 .tabs-scroll-strip::-webkit-scrollbar-thumb {
   background: rgba(255, 68, 102, 0.6);
   border-radius: 2px;
+}
+
+/* ── Autofill override — prevent Chrome/Edge/Safari from turning inputs white ── */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  /* Force dark background via box-shadow trick — the only reliable cross-browser method */
+  -webkit-box-shadow: 0 0 0 1000px #0d0020 inset !important;
+  box-shadow: 0 0 0 1000px #0d0020 inset !important;
+  -webkit-text-fill-color: #ffffff !important;
+  caret-color: #ffffff;
+  border-radius: inherit;
+  transition: background-color 9999s ease-in-out 0s; /* delay browser bg flash */
+}
+
+/* ── pw-input: ensure no default browser styles bleed through ── */
+.pw-input {
+  /* Remove browser password reveal button (Edge/IE) */
+  -ms-reveal: none;
+}
+.pw-input::-ms-reveal,
+.pw-input::-ms-clear {
+  display: none;
+}
+/* Remove Chrome's built-in password eye */
+.pw-input::-webkit-credentials-auto-fill-button,
+.pw-input::-webkit-strong-password-auto-fill-button {
+  display: none !important;
+  visibility: hidden;
+}
+
+/* ── Slot page: hide navbar quick-nav row to reclaim vertical space ── */
+.slot-page-root nav .slot-hide {
+  display: none !important;
+}
+
+/* ── Slot reel spin animations ── */
+/* translateY uses --reel-step CSS variable set per-column, fallback -68px */
+@keyframes reelSpin {
+  from { transform: translateY(0); }
+  to   { transform: translateY(var(--reel-step, -68px)); }
+}
+@keyframes reelSpinFast {
+  from { transform: translateY(0); }
+  to   { transform: translateY(var(--reel-step, -68px)); }
+}
+@keyframes symbolPulse {
+  from { transform: scale(1);    box-shadow: 0 0 14px rgba(255,215,0,0.5); }
+  to   { transform: scale(1.07); box-shadow: 0 0 22px rgba(255,215,0,0.85); }
 }

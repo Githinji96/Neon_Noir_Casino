@@ -5,9 +5,10 @@ import { NEW_ARRIVAL_GAMES } from '../config/mockData';
 
 interface NewArrivalsSectionProps {
   onGameClick: (id: string, title: string) => void;
+  onSeeAll?: () => void;
 }
 
-export default function NewArrivalsSection({ onGameClick }: NewArrivalsSectionProps) {
+export default function NewArrivalsSection({ onGameClick, onSeeAll }: NewArrivalsSectionProps) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -26,7 +27,10 @@ export default function NewArrivalsSection({ onGameClick }: NewArrivalsSectionPr
           <div className="mt-1 h-0.5 w-10 bg-cyan-400" style={{ boxShadow: '0 0 6px #00FFFF' }} />
         </div>
         <span className="text-white/20 text-xs font-orbitron">Pure odds · No jackpot</span>
-        <button className="ml-auto text-xs font-orbitron text-white/40 hover:text-white border border-white/20 rounded-full px-3 py-1 transition-colors">
+        <button
+          onClick={onSeeAll}
+          className="ml-auto text-xs font-orbitron text-white/40 hover:text-white border border-white/20 rounded-full px-3 py-1 transition-colors"
+        >
           SEE ALL ›
         </button>
       </div>

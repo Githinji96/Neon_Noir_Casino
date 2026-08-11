@@ -48,28 +48,28 @@ export default function SpinControls() {
   };
 
   return (
-    <div className="flex flex-col items-center">
-      {/* SPIN button */}
+    <div className="flex flex-col items-center shrink-0">
+      {/* SPIN button — large rounded, yellow glow */}
       <motion.button
         onClick={spin}
         disabled={isDisabled}
         animate={isDisabled ? disabledAnimate : glowAnimate}
         transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
-        className={`w-24 h-24 rounded-full bg-neon-yellow text-black font-orbitron font-bold text-xl
+        className={`w-24 h-24 rounded-full bg-yellow-400 text-black font-orbitron font-bold text-xl
           ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
       >
-        {isSpinning ? 'SPINNING...' : 'SPIN'}
+        {isSpinning ? '...' : 'SPIN'}
       </motion.button>
 
       {/* Toggle row */}
-      <div className="flex gap-4 justify-center mt-4">
+      <div className="flex gap-4 justify-center mt-3">
         {/* AUTOPLAY toggle */}
         <button
           onClick={toggleAutoplay}
-          className={`px-3 py-1 rounded-full text-xs font-orbitron border transition-colors
+          className={`border rounded-full px-4 py-1.5 text-xs font-orbitron transition-colors
             ${autoplay
               ? 'border-neon-yellow text-neon-yellow bg-neon-yellow/10'
-              : 'border-white/20 text-gray-400'
+              : 'border-white/20 text-gray-400 hover:border-white/40'
             }`}
         >
           AUTO
@@ -78,7 +78,7 @@ export default function SpinControls() {
         {/* TURBO toggle */}
         <button
           onClick={toggleTurboMode}
-          className={`px-3 py-1 rounded-full text-xs font-orbitron border transition-all duration-200
+          className={`border rounded-full px-4 py-1.5 text-xs font-orbitron transition-all duration-200
             ${turboMode
               ? 'border-cyan-400 text-cyan-400 bg-cyan-400/10 shadow-[0_0_12px_rgba(34,211,238,0.4)]'
               : 'border-white/20 text-gray-400 hover:border-white/40'
@@ -98,10 +98,10 @@ export default function SpinControls() {
                 setShowVolume((v) => !v);
               }
             }}
-            className={`px-3 py-1 rounded-full text-xs font-orbitron border transition-colors
+            className={`rounded-full px-3 py-1.5 border text-xs font-orbitron transition-colors
               ${soundEnabled
                 ? 'border-neon-yellow text-neon-yellow bg-neon-yellow/10'
-                : 'border-white/20 text-gray-400'
+                : 'border-white/20 text-gray-400 hover:border-white/40'
               }`}
           >
             {soundEnabled ? (volume === 0 ? '🔇' : volume < 0.5 ? '🔉' : '🔊') : '🔇'}

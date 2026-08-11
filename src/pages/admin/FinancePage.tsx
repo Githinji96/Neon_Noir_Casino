@@ -105,18 +105,49 @@ function DetailDrawer({ tx, onClose }: { tx: TxRow; onClose: () => void }) {
 // ─── CSV export ───────────────────────────────────────────────────────────────
 
 function downloadCSV(rows: TxRow[]) {
-  const header = 'ID,Player,Phone,Amount,Type,Status,Receipt,Date,Approved By,Approved Time';
+  // Escape a CSV field: wrap in quotes, escape internal quotes by doubling them
+  const esc = (v: string | number | null | undefined): string => {
+    const s = String(v ?? '');
+    // Always quote — prevents Excel from mangling phone numbers, dates, UUIDs
+    return `"${s.replace(/"/g, '""')}"`;
+  };
+
+  // Format date as plain text — prefix with tab stop to prevent Excel auto-conversion
+  const fmtDate = (iso: string | null | undefined): string => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    // Prefix with apostrophe inside the quoted field forces Excel to treat as text
+    return `'${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  };
+
+  const header = ['ID', 'Player', 'Phone', 'Amount', 'Type', 'Status', 'Receipt', 'Date', 'Approved By', 'Approved Time']
+    .map(esc).join(',');
+
   const lines = rows.map((r) =>
     [
-      r.id, r.profiles?.username ?? '', r.phone ?? '',
-      r.amount, r.type, r.status, r.mpesa_receipt ?? '',
-      new Date(r.created_at).toLocaleString(),
-      r.approved_by ?? '', r.approved_at ? new Date(r.approved_at).toLocaleString() : '',
+      esc(r.id),
+      esc(r.profiles?.username),
+      // Prefix phone with apostrophe to force Excel to treat as text, not scientific notation
+      esc("'" + (r.phone ?? '')),
+      esc(r.amount),
+      esc(r.type),
+      esc(r.status),
+      esc(r.mpesa_receipt),
+      esc(fmtDate(r.created_at)),
+      esc(r.approved_by),
+      esc(fmtDate(r.approved_at)),
     ].join(',')
   );
-  const blob = new Blob([[header, ...lines].join('\n')], { type: 'text/csv' });
+
+  // BOM prefix (\uFEFF) ensures Excel opens UTF-8 CSV correctly on Windows
+  const bom = '\uFEFF';
+  const blob = new Blob([bom + [header, ...lines].join('\r\n')], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href = url; a.download = 'transactions.csv'; a.click();
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `transactions_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
   URL.revokeObjectURL(url);
 }
 
