@@ -244,7 +244,7 @@ export default function VIPPage() {
         )}
       </main>
 
-      <BottomNav activeTab="home" onTabChange={() => {}} />
+      <BottomNav />
     </div>
   );
 }

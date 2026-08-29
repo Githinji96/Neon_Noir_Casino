@@ -235,7 +235,7 @@ export default function NotificationsPage() {
         )}
       </main>
 
-      <BottomNav activeTab="home" onTabChange={() => {}} />
+      <BottomNav />
     </div>
   );
 }

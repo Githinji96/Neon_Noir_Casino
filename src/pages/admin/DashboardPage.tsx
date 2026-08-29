@@ -209,13 +209,16 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchMetrics();
-    // Poll every 60s — was 10s which was creating a query storm on free-tier Supabase
-    const pollId = setInterval(fetchMetrics, 60_000);
+    // Poll every 5 minutes — reduced from 60s to ease DB load on Nano compute
+    const pollId = setInterval(fetchMetrics, 5 * 60_000);
 
-    // Realtime: only watch transactions (not spins — too frequent during gameplay)
+    // Realtime: watch both transactions and spins so slot play updates the dashboard
     const channel = supabase
       .channel('admin_dashboard_watch')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, () => {
+        fetchMetrics();
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'spins' }, () => {
         fetchMetrics();
       })
       .subscribe();

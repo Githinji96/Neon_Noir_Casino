@@ -130,7 +130,7 @@ export default function LiveTablesPage() {
         </div>
       </main>
 
-      <BottomNav activeTab="home" onTabChange={(tab) => { if (tab === 'spin') navigate('/'); }} />
+      <BottomNav />
     </div>
   );
 }

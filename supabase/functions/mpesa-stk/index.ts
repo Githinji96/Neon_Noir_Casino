@@ -356,7 +356,7 @@ Deno.serve(async (req) => {
     const rawPhone = playerProfile.phone.replace(/\D/g, '');
     const serverPhone = rawPhone.startsWith('254') ? rawPhone : '254' + rawPhone;
 
-    if (!/^2547\d{8}$/.test(serverPhone)) {
+    if (!/^254[71]\d{8}$/.test(serverPhone)) {
       return json({ error: `Registered phone number (${playerProfile.phone}) is not a valid Kenyan M-Pesa number. Please update it in Account Settings.` }, 400);
     }
 

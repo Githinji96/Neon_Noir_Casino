@@ -109,6 +109,8 @@ export default function AdminLoginPage() {
         adminProfile: { id: profile!.id, username: profile!.username ?? '', admin_role: role },
         loading: false,
       });
+      // Start the server-side session (authoritative expiry)
+      await useAdminStore.getState().startSession();
       navigate('/admin/dashboard');
     } catch (err) {
       setError(getAuthErrorMessage(err));

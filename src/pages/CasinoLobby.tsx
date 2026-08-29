@@ -50,12 +50,7 @@ export default function CasinoLobby({ onNavigateToSlot }: CasinoLobbyProps) {
         <ProgressiveJackpotsSection onSpinNow={(id, title) => onNavigateToSlot(id, title, true)} />
       </main>
 
-      <BottomNav
-        activeTab="home"
-        onTabChange={(tab) => {
-          if (tab === 'spin') onNavigateToSlot();
-        }}
-      />
+      <BottomNav />
     </div>
   );
 }

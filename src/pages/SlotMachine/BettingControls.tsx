@@ -1,8 +1,9 @@
 import { useRef, useState, useEffect } from 'react';
 import { useGameStore } from '../../store/gameStore';
-import { MIN_BET, MAX_BET } from '../../config/betLadder';
+import { useTranslation } from '../../i18n/useTranslation';
 
 export default function BettingControls() {
+  const t = useTranslation();
   const bet = useGameStore((s) => s.bet);
   const balance = useGameStore((s) => s.balance);
   const setBet = useGameStore((s) => s.setBet);
@@ -11,13 +12,16 @@ export default function BettingControls() {
   const activeGameId = useGameStore((s) => s.activeGameId);
   const isBetLocked = jackpotMode && activeGameId === 'cyber-strike-777';
 
+  const MIN_BET = 1;
+  const MAX_BET = 10_000; // cap bet at KES 10,000 — balance check is handled separately
+
   const [editing, setEditing] = useState(false);
   const [inputVal, setInputVal] = useState('');
   const [error, setError] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const isMin = bet === MIN_BET;
-  const isMax = bet === MAX_BET;
+  const isMin = bet <= MIN_BET;
+  const isMax = bet >= MAX_BET;
   const insufficient = balance < bet;
 
   useEffect(() => {
@@ -39,7 +43,6 @@ export default function BettingControls() {
     if (isNaN(parsed)) { setError('Enter a valid number'); return; }
     if (parsed < MIN_BET) { setError(`Min is KES ${MIN_BET}`); return; }
     if (parsed > MAX_BET) { setError(`Max is KES ${MAX_BET.toLocaleString()}`); return; }
-    // Use the exact typed value — no ladder snapping for custom input
     useGameStore.setState({ bet: Math.round(parsed * 100) / 100 });
     setEditing(false);
     setError('');
@@ -57,9 +60,12 @@ export default function BettingControls() {
 
   return (
     <div className="flex flex-col items-center shrink-0 w-full">
-      {/* BET AMOUNT label — centered over the entire row */}
-      <span className="text-xs text-gray-400 uppercase tracking-widest font-orbitron mb-1 mt-3 text-center w-full">
-        Bet Amount
+      {/* BET AMOUNT label */}
+      <span
+        className="text-gray-400 uppercase tracking-widest font-orbitron text-center w-full"
+        style={{ fontSize: 'clamp(9px, 2.5vw, 12px)', marginTop: 'clamp(6px, 1.5vh, 12px)', marginBottom: '2px' }}
+      >
+        {t.slot_bet_amount}
       </span>
 
       {/* Cyber Strike 777 jackpot mode: fixed KES 100 bet, locked */}
@@ -114,12 +120,13 @@ export default function BettingControls() {
           </p>
         </div>
       ) : (
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 xs:gap-4">
           <button
             onClick={() => setBet('down')}
             disabled={isMin || isSpinning}
-            className={`w-11 h-11 rounded-full bg-gray-800 border border-gray-600 flex items-center justify-center text-white text-xl transition-colors
+            className={`rounded-full bg-gray-800 border border-gray-600 flex items-center justify-center text-white transition-colors
               ${isMin || isSpinning ? 'opacity-30 cursor-not-allowed' : 'hover:bg-gray-700'}`}
+            style={{ width: 'clamp(36px, 10vw, 44px)', height: 'clamp(36px, 10vw, 44px)', fontSize: 'clamp(14px, 4vw, 20px)' }}
             aria-label="Decrease bet"
           >
             −
@@ -129,8 +136,12 @@ export default function BettingControls() {
             onClick={openEditor}
             disabled={isSpinning}
             title="Click to type a custom bet"
-            className="text-2xl font-orbitron text-yellow-400 font-bold min-w-[140px] text-center hover:opacity-80 transition-opacity disabled:cursor-not-allowed underline decoration-dotted underline-offset-4 decoration-yellow-600"
-            style={{ textShadow: '0 0 8px rgba(255,215,0,0.6)' }}
+            className="font-orbitron text-yellow-400 font-bold text-center hover:opacity-80 transition-opacity disabled:cursor-not-allowed underline decoration-dotted underline-offset-4 decoration-yellow-600"
+            style={{
+              fontSize:  'clamp(14px, 4.5vw, 24px)',
+              minWidth:  'clamp(100px, 30vw, 140px)',
+              textShadow: '0 0 8px rgba(255,215,0,0.6)',
+            }}
           >
             KES {bet.toFixed(2)}
           </button>
@@ -138,8 +149,9 @@ export default function BettingControls() {
           <button
             onClick={() => setBet('up')}
             disabled={isMax || isSpinning}
-            className={`w-11 h-11 rounded-full bg-gray-800 border border-gray-600 flex items-center justify-center text-white text-xl transition-colors
+            className={`rounded-full bg-gray-800 border border-gray-600 flex items-center justify-center text-white transition-colors
               ${isMax || isSpinning ? 'opacity-30 cursor-not-allowed' : 'hover:bg-gray-700'}`}
+            style={{ width: 'clamp(36px, 10vw, 44px)', height: 'clamp(36px, 10vw, 44px)', fontSize: 'clamp(14px, 4vw, 20px)' }}
             aria-label="Increase bet"
           >
             +

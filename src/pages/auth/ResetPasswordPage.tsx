@@ -11,9 +11,11 @@ import { supabase } from '../../lib/supabase';
 
 export default function ResetPasswordPage() {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [loading, setLoading]       = useState(false);
+  const [error, setError]           = useState('');
+  const [success, setSuccess]       = useState('');
+  const [sessionReady, setSessionReady] = useState(false);
+  const [linkExpired, setLinkExpired]   = useState(false);
 
   const { register, handleSubmit, watch, formState: { errors } } = useForm<ResetPasswordFormData>({
     resolver: zodResolver(resetPasswordSchema),
@@ -23,14 +25,38 @@ export default function ResetPasswordPage() {
 
   // Exchange the code/token from the URL on mount so the session is ready
   useEffect(() => {
-    const url = window.location.href;
-    const hasCode = url.includes('?code=') || url.includes('&code=');
-    const hasToken = url.includes('access_token=');
+    const href   = window.location.href;
+    const hash   = window.location.hash;
+    const search = window.location.search;
 
-    if (hasCode || hasToken) {
-      supabase.auth.exchangeCodeForSession(url).catch(() => {
-        // If exchange fails it's an expired link — user will see error on submit
+    const hasCode        = search.includes('code=');
+    const hasAccessToken = hash.includes('access_token=') || href.includes('access_token=');
+
+    if (hasCode) {
+      // PKCE flow — exchange code for session
+      supabase.auth.exchangeCodeForSession(href)
+        .then(({ error: err }) => {
+          if (err) {
+            console.warn('[ResetPasswordPage] exchangeCodeForSession failed:', err.message);
+            setLinkExpired(true);
+          } else {
+            setSessionReady(true);
+          }
+        })
+        .catch(() => setLinkExpired(true));
+    } else if (hasAccessToken) {
+      // Implicit flow — Supabase JS detects the hash token automatically via
+      // detectSessionInUrl: true. Verify the session loaded correctly.
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session) {
+          setSessionReady(true);
+        } else {
+          setLinkExpired(true);
+        }
       });
+    } else {
+      // No token in URL — likely navigated here directly or link is malformed
+      setLinkExpired(true);
     }
   }, []);
 
@@ -55,28 +81,59 @@ export default function ResetPasswordPage() {
   return (
     <AuthCard title="New Password" subtitle="Choose a strong password for your account">
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+        {linkExpired && !success && (
+          <AuthAlert
+            type="error"
+            message="This reset link has expired or is invalid. Please request a new one."
+          />
+        )}
         {error && <AuthAlert type="error" message={error} />}
         {success && <AuthAlert type="success" message={success} />}
 
-        <PasswordField
-          label="New Password"
-          placeholder="Min 8 chars, 1 number, 1 special"
-          error={errors.password?.message}
-          showStrength
-          watchedValue={passwordValue}
-          {...register('password')}
-        />
+        {!sessionReady && !linkExpired && !success && (
+          <div className="flex items-center justify-center py-4 gap-3">
+            <div className="w-5 h-5 rounded-full border-2 border-yellow-400 border-t-transparent animate-spin" />
+            <span className="text-gray-400 text-sm font-orbitron">Verifying link...</span>
+          </div>
+        )}
 
-        <PasswordField
-          label="Confirm New Password"
-          placeholder="Repeat your new password"
-          error={errors.confirmPassword?.message}
-          {...register('confirmPassword')}
-        />
+        {(sessionReady || linkExpired) && (
+          <>
+            <PasswordField
+              label="New Password"
+              placeholder="Min 8 chars, 1 number, 1 special"
+              error={errors.password?.message}
+              showStrength
+              watchedValue={passwordValue}
+              {...register('password')}
+            />
 
-        <AuthButton type="submit" loading={loading} disabled={!!success}>
-          UPDATE PASSWORD
-        </AuthButton>
+            <PasswordField
+              label="Confirm New Password"
+              placeholder="Repeat your new password"
+              error={errors.confirmPassword?.message}
+              {...register('confirmPassword')}
+            />
+
+            <AuthButton
+              type="submit"
+              loading={loading}
+              disabled={!!success || linkExpired}
+            >
+              UPDATE PASSWORD
+            </AuthButton>
+
+            {linkExpired && (
+              <a
+                href="/auth/forgot-password"
+                className="text-center text-xs font-orbitron tracking-wider transition-colors hover:opacity-80"
+                style={{ color: '#FFD700' }}
+              >
+                Request a new reset link →
+              </a>
+            )}
+          </>
+        )}
       </form>
     </AuthCard>
   );

@@ -1,7 +1,7 @@
-import { create } from 'zustand';
+﻿import { create } from 'zustand';
 import { getAuthErrorMessage, isTransientAuthError, supabase, type Profile } from '../lib/supabase';
 import type { User } from '@supabase/supabase-js';
-import { setAuthUserGetter, useGameStore } from './gameStore';
+import { setAuthUserGetter, useGameStore, isSpinPending } from './gameStore';
 
 interface AuthState {
   user: User | null;
@@ -21,8 +21,28 @@ interface AuthState {
 // even if called multiple times (e.g. React StrictMode double-invoke).
 let listenerRegistered = false;
 
+/** Read the stored session user synchronously at module load time.
+ *  This runs before any React component renders, eliminating the
+ *  flash-of-unauthenticated-content on page refresh. */
+function getStoredUser() {
+  try {
+    const projectRef = (import.meta.env.VITE_SUPABASE_URL as string)
+      .replace('https://', '').split('.')[0];
+    const stored = localStorage.getItem(`sb-${projectRef}-auth-token`);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      return parsed?.user ?? parsed?.session?.user ?? null;
+    }
+  } catch { /* localStorage unavailable */ }
+  return null;
+}
+
+const _storedUser = getStoredUser();
+
 export const useAuthStore = create<AuthState>((set, get) => ({
-  user: null,
+  // Pre-populate user from localStorage so the Navbar shows the correct
+  // state on the very first render — no flash of logged-out UI on refresh.
+  user: _storedUser,
   profile: null,
   loading: true,
 
@@ -30,21 +50,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // Register auth user getter for jackpot store (avoids circular dep)
     setAuthUserGetter(() => useAuthStore.getState().user?.id ?? null);
 
-    // Restore session synchronously from localStorage so the UI never flashes
-    // to logged-out state while the async getSession() call is in-flight.
-    try {
-      // Derive the storage key from the configured Supabase URL rather than
-      // hardcoding the project ref — keeps it working if the project changes
-      const projectRef = (import.meta.env.VITE_SUPABASE_URL as string)
-        .replace('https://', '').split('.')[0];
-      const stored = localStorage.getItem(`sb-${projectRef}-auth-token`);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        const sessionUser = parsed?.user ?? parsed?.session?.user ?? null;
-        if (sessionUser) set({ user: sessionUser, loading: true });
-      }
-    } catch { /* localStorage unavailable */ }
-
+    // User is already pre-populated from _storedUser at module load time.
+    // Verify the stored token is valid and fetch the full profile.
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
@@ -62,14 +69,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         set({ user: null, profile: null, loading: false });
       }
     } catch {
-      // Network error or bad config -- unblock the UI
+      // Network error or bad config - unblock the UI
       set({ loading: false });
     }
 
     if (listenerRegistered) return;
     listenerRegistered = true;
 
-    // Refresh balance whenever the player's tab regains focus â€”
+    // Refresh balance whenever the player's tab regains focus Ã¢â‚¬â€
     // catches admin credits/debits that happened while the tab was hidden.
     const onVisible = () => {
       if (document.visibilityState === 'visible') {
@@ -166,7 +173,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           if (error) return error.message;
           if (!data?.user) return 'Sign in failed. Please try again.';
 
-          // â”€â”€ Check account_status before allowing access â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          // Ã¢â€â‚¬Ã¢â€â‚¬ Check account_status before allowing access Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
           const { data: profile } = await supabase
             .from('profiles')
             .select('account_status')
@@ -216,15 +223,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  syncBalance: async (balance) => {
-    const { user } = get();
-    if (!user) return;
-    // Write to Supabase â€” don't call set() here; the realtime listener will
-    // echo this back only if the value actually changed externally.
-    await supabase
-      .from('profiles')
-      .update({ balance, updated_at: new Date().toISOString() })
-      .eq('id', user.id);
+  syncBalance: async (_balance) => {
+    // Balance is kept in sync via apply_spin_result RPC on every spin.
+    // This no-op avoids guard_balance_update which blocks client-side increases.
   },
 
   refreshBalance: async () => {
@@ -266,7 +267,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           : null,
       }));
       if (data.balance != null && data.balance !== current?.balance) {
-        useGameStore.setState({ balance: data.balance });
+        // Never overwrite the game store balance while a spin RPC write is in-flight â€”
+        // that would revert the optimistic balance update the player just saw.
+        if (!isSpinPending()) {
+          useGameStore.setState({ balance: data.balance });
+        }
       }
     } catch {
       // silent -- best effort
@@ -284,4 +289,5 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     });
   },
 }));
+
 

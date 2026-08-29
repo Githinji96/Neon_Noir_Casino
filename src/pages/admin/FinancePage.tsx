@@ -464,7 +464,7 @@ export default function FinancePage() {
           <label className="text-white/40 text-xs uppercase tracking-widest">Type</label>
           <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}
             className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 pr-8 text-sm text-white appearance-none focus:outline-none focus:border-[#FFD700] focus:ring-1 focus:ring-[#FFD700]">
-            {['all', 'deposit', 'withdrawal', 'bet', 'payout'].map((s) =>
+            {['all', 'deposit', 'withdrawal', 'admin_credit', 'admin_debit', 'bet', 'payout'].map((s) =>
               <option key={s} value={s} className="bg-slate-900">{s}</option>)}
           </select>
         </div>

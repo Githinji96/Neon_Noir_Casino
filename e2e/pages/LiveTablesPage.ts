@@ -30,7 +30,7 @@ export class LiveTablesPage {
     this.liveIndicator = page.locator('span').filter({ hasText: /tables live now/i });
 
     // Category buttons are styled pills — locate by text
-    this.filterAll       = page.getByRole('button', { name: /^all$/i });
+    this.filterAll       = page.getByRole('button', { name: /all tables/i });
     this.filterBlackjack = page.getByRole('button', { name: /blackjack/i });
     this.filterRoulette  = page.getByRole('button', { name: /roulette/i });
     this.filterBaccarat  = page.getByRole('button', { name: /baccarat/i });

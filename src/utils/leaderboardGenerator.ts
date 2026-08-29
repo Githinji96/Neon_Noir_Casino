@@ -38,13 +38,36 @@ const COUNTRIES = [
   { code: 'SG', flag: '🇸🇬', name: 'Singapore' },
 ];
 
+// Real game titles from the app — slots (from GAME_LISTINGS) + live tables (from liveTablesData)
 export const GAMES = [
-  'Neon Jungle Fruits', 'Dark Matter Reels', 'Electric Storm',
-  'Mega Vault', 'Cyber Strike 777', 'Crystal Riches',
-  'Golden Tiger', 'Lucky Samurai', 'Pirate Gold',
-  'Wolf Empire', 'Ancient Egypt', 'Neon Nexus',
-  'Dragon Riches', 'Lucky Panda', 'Fortune Spin',
-  'Phoenix Gold', 'Hyper 777', 'Cyber Wilds', 'Jackpot Empire',
+  // ── Slot games ─────────────────────────────────────────────────────────────
+  'Cyber Strike 777',
+  'Neon Jungle Fruits',
+  'Dark Matter Reels',
+  'Quantum Vault',
+  'Neon Samurai',
+  'Electric Storm',
+  'Crystal Grid',
+  'Solar Flare',
+  'Midnight Heist',
+  'Ocean Depths',
+  'Dragon Forge',
+  // ── Live Blackjack ─────────────────────────────────────────────────────────
+  'Neon Blackjack VIP',
+  'Classic Blackjack',
+  'Speed Blackjack',
+  // ── Live Roulette ──────────────────────────────────────────────────────────
+  'Lightning Roulette',
+  'European Roulette',
+  'Neon Roulette',
+  // ── Live Baccarat ──────────────────────────────────────────────────────────
+  'Baccarat Noir',
+  'Speed Baccarat',
+  'Mini Baccarat',
+  // ── Live Poker ─────────────────────────────────────────────────────────────
+  "Texas Hold'em VIP",
+  "Casino Hold'em",
+  'Three Card Poker',
 ];
 
 const AVATARS = [

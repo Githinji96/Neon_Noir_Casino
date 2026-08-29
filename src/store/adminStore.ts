@@ -103,14 +103,25 @@ export interface JackpotPool {
 
 // ─── Store ────────────────────────────────────────────────────────────────────
 
+/** Session timeout in minutes — configurable via VITE_ADMIN_SESSION_TIMEOUT env var */
+const SESSION_TIMEOUT_MINUTES = parseInt(
+  (import.meta.env.VITE_ADMIN_SESSION_TIMEOUT as string | undefined) ?? '30',
+  10
+);
+
 interface AdminState {
   adminProfile: AdminProfile | null;
   loading: boolean;
   alerts: AdminAlert[];
   unreadAlertCount: number;
+  /** ISO string of when the admin session expires (from server) */
+  sessionExpiresAt: string | null;
 
   init: () => Promise<void>;
   signOut: () => Promise<void>;
+  startSession: () => Promise<void>;
+  checkSession: () => Promise<'valid' | 'expiring' | 'expired'>;
+  refreshSession: () => Promise<boolean>;
   subscribeToAlerts: () => () => void;
   auditLog: (entry: Omit<AuditLogEntry, 'id' | 'created_at'>) => Promise<void>;
   dismissAlert: (alertId: string) => Promise<void>;
@@ -118,13 +129,10 @@ interface AdminState {
 
 export const useAdminStore = create<AdminState>((set, get) => ({
   adminProfile: null,
-  // Start as true — on any page load we don't know yet if there's a valid admin session.
-  // init() will set it to false once it resolves (with or without a profile).
-  // This prevents the guard from immediately redirecting to /admin/login on refresh
-  // before init() has had a chance to check localStorage/session.
   loading: true,
   alerts: [],
   unreadAlertCount: 0,
+  sessionExpiresAt: null,
 
   init: async () => {
     // If profile already set (inter-page navigation), skip re-init but clear loading
@@ -220,8 +228,81 @@ export const useAdminStore = create<AdminState>((set, get) => ({
   },
 
   signOut: async () => {
-    await supabase.auth.signOut();
-    set({ adminProfile: null, alerts: [], unreadAlertCount: 0 });
+    // Clear client state immediately — never block on network calls
+    set({ adminProfile: null, alerts: [], unreadAlertCount: 0, sessionExpiresAt: null });
+    // Fire-and-forget: end server session and revoke Supabase token
+    // Both are best-effort — a 3s timeout prevents hanging
+    const cleanup = async () => {
+      await Promise.resolve(supabase.rpc('end_admin_session')).catch(() => {});
+      await Promise.race([
+        supabase.auth.signOut(),
+        new Promise<void>((resolve) => setTimeout(resolve, 3_000)),
+      ]);
+    };
+    void cleanup();
+  },
+
+  startSession: async () => {
+    try {
+      const { data, error } = await supabase.rpc('start_admin_session', {
+        p_timeout_minutes: SESSION_TIMEOUT_MINUTES,
+      });
+      if (!error && data?.expiresAt) {
+        set({ sessionExpiresAt: data.expiresAt });
+      }
+      // If RPC fails (migration not yet run), log but don't block login
+      if (error) console.warn('[adminStore] start_admin_session RPC unavailable:', error.message);
+    } catch (err) {
+      console.warn('[adminStore] startSession failed:', err);
+    }
+  },
+
+  checkSession: async () => {
+    try {
+      const { data, error } = await supabase.rpc('check_admin_session');
+
+      // RPC infrastructure error (not deployed, network issue) — treat as valid
+      // so a deployment gap doesn't boot all admins. Log for visibility.
+      if (error) {
+        console.warn('[adminStore] check_admin_session RPC unavailable:', error.message);
+        return 'valid';
+      }
+
+      if (!data?.valid) {
+        // Server explicitly says session is invalid/expired
+        const reason = data?.reason ?? 'unknown';
+        console.info('[adminStore] session invalid:', reason);
+        await supabase.auth.signOut();
+        set({ adminProfile: null, alerts: [], unreadAlertCount: 0, sessionExpiresAt: null });
+        return 'expired';
+      }
+
+      set({ sessionExpiresAt: data.expiresAt });
+      if (data.secondsRemaining <= 300) return 'expiring';
+      return 'valid';
+    } catch (err) {
+      // Network/unexpected error — don't log out, just treat as valid
+      console.warn('[adminStore] checkSession error (treating as valid):', err);
+      return 'valid';
+    }
+  },
+
+  refreshSession: async () => {
+    try {
+      const { data, error } = await supabase.rpc('refresh_admin_session', {
+        p_timeout_minutes: SESSION_TIMEOUT_MINUTES,
+      });
+      if (error) {
+        console.warn('[adminStore] refresh_admin_session RPC unavailable:', error.message);
+        return true; // Don't force logout on RPC failure
+      }
+      if (!data?.success) return false;
+      set({ sessionExpiresAt: data.expiresAt });
+      return true;
+    } catch (err) {
+      console.warn('[adminStore] refreshSession error:', err);
+      return true; // Don't force logout on network error
+    }
   },
 
   subscribeToAlerts: () => {

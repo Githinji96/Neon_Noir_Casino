@@ -45,9 +45,10 @@ export class SettingsModalPage {
 
     this.changeMpesaBtn = page.getByRole('button', { name: /change|add number/i });
 
-    // Security tab fields
-    this.newPasswordInput     = page.getByLabel(/new password/i);
-    this.confirmPasswordInput = page.getByLabel(/confirm password/i);
+    // Security tab fields — located by position since labels lack `for` attributes
+    // The security tab renders two password inputs in order: new, then confirm
+    this.newPasswordInput     = this.panel.locator('input[type="password"]').nth(0);
+    this.confirmPasswordInput = this.panel.locator('input[type="password"]').nth(1);
     this.updatePasswordBtn    = page.getByRole('button', { name: /update password/i });
     this.passwordValidation   = page.locator('p').filter({ hasText: /passwords do not match|min 8/i });
   }

@@ -25,18 +25,19 @@ export default function WinDisplay() {
   return (
     <div className="relative w-full shrink-0">
       <div
-        className="flex justify-between items-center px-4 py-3 rounded-lg border border-gray-700/60"
+        className="flex justify-between items-center px-3 xs:px-4 py-1.5 xs:py-2.5 sm:py-3 rounded-lg border border-gray-700/60"
         style={{ background: 'rgba(13,13,26,0.9)' }}
       >
         <div className="flex flex-col items-start">
-          <span className="text-[10px] text-gray-500 uppercase tracking-widest font-orbitron">Balance</span>
-          <span className="font-orbitron text-white text-base font-bold leading-tight">{fmt(balance)}</span>
+          <span className="text-[9px] xs:text-[10px] text-gray-500 uppercase tracking-widest font-orbitron">Balance</span>
+          <span className="font-orbitron text-white font-bold leading-tight" style={{ fontSize: 'clamp(12px, 3.5vw, 16px)' }}>{fmt(balance)}</span>
         </div>
         {/* Vertical divider */}
         <div className="w-px self-stretch bg-gray-700/50 mx-2" />
         <div className="flex flex-col items-end">
-          <span className="text-[10px] text-gray-500 uppercase tracking-widest font-orbitron">Last Payout</span>
-          <span className={`font-orbitron text-base font-bold leading-tight ${lastWin > bet ? 'text-green-400' : lastWin > 0 ? 'text-yellow-300' : 'text-gray-600'}`}>
+          <span className="text-[9px] xs:text-[10px] text-gray-500 uppercase tracking-widest font-orbitron">Last Payout</span>
+          <span className={`font-orbitron font-bold leading-tight ${lastWin > bet ? 'text-green-400' : lastWin > 0 ? 'text-yellow-300' : 'text-gray-600'}`}
+            style={{ fontSize: 'clamp(12px, 3.5vw, 16px)' }}>
             {fmt(lastWin)}
           </span>
         </div>

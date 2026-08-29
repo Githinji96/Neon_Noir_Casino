@@ -3,30 +3,42 @@ import { type SpinGrid, generateSpin, setActiveGame } from '../logic/rng';
 import { type WinResult, evaluatePaylines } from '../logic/paylines';
 import { calculatePayout, calculateScatterPayout } from '../logic/payout';
 import { recordSpin, getSessionStats, setActiveGameRTP } from '../logic/rtpController';
-import { BET_LADDER, DEFAULT_BET } from '../config/betLadder';
+import { DEFAULT_BET } from '../config/betLadder';
 import { GAME_CONFIG } from '../config/gameConfig';
 import { getSymbolsForGame } from '../config/symbols';
 import { JACKPOT_GAME_IDS } from '../config/mockData';
 import { useJackpotStore } from './jackpotStore';
 import { supabase } from '../lib/supabase';
 
-// Spin insert batch buffer — flushes to DB every 10 spins instead of 1-per-spin
-// Reduces DB writes by 10× at scale. Flushed on tab close via beforeunload.
-const _spinBatch: { user_id: string; game_id: string; bet: number; payout: number; is_free_spin: boolean }[] = [];
-if (typeof window !== 'undefined') {
-  window.addEventListener('beforeunload', () => {
-    if (_spinBatch.length > 0) {
-      const batch = _spinBatch.splice(0);
-      // Use sendBeacon for reliable fire-and-forget on page close
-      const url = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/spins`;
-      navigator.sendBeacon(url, JSON.stringify(batch));
-    }
-  });
-}
-
 // Lazy ref to authStore to avoid circular dependency
 let _getAuthUser: (() => string | null) | null = null;
 export function setAuthUserGetter(fn: () => string | null) { _getAuthUser = fn; }
+
+/** Resolve the current user ID.
+ *  Primary: use the registered getter (set by authStore.init).
+ *  Fallback: read directly from the supabase session cache — handles the
+ *  first-spin race where init() hasn't finished registering the getter yet.
+ */
+async function resolveUserId(): Promise<string | null> {
+  // Fast path — getter already registered
+  if (_getAuthUser) {
+    const id = _getAuthUser();
+    if (id) return id;
+  }
+  // Slow path — read session directly (only on first spin before init completes)
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.user?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// Flag: true while apply_spin_result is in-flight.
+// refreshBalance checks this so it never clobbers optimistic spin state
+// with a stale DB value that arrived before the RPC completed.
+let _spinPending = false;
+export function isSpinPending() { return _spinPending; }
 
 interface GameState {
   balance: number;
@@ -174,33 +186,62 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!isFreeSpins) {
       recordSpin(state.bet, totalPayout);
 
-      const userId = _getAuthUser ? _getAuthUser() : null;
-      if (userId) {
-        // Award VIP points (fire and forget)
-        import('./vipStore').then(({ useVIPStore }) => {
-          useVIPStore.getState().awardPoints(userId, state.bet, 'bet');
-          if (totalPayout < state.bet) {
-            useVIPStore.getState().recordLoss(userId, state.bet - totalPayout);
-          }
+      // Capture values now before async work begins
+      const betSnapshot    = state.bet;
+      const gameIdSnapshot = state.activeGameId;
+
+      // Run all async DB work in a self-contained async block so spin() stays sync
+      void (async () => {
+        const userId = await resolveUserId();
+        if (!userId) return;
+
+        // Also register the getter lazily so future spins use the fast path
+        if (!_getAuthUser) {
+          _getAuthUser = () => userId;
+        }
+
+        // Block refreshBalance from clobbering our optimistic balance update
+        _spinPending = true;
+
+        // Apply spin result via SECURITY DEFINER RPC
+        const { data, error } = await supabase.rpc('apply_spin_result', {
+          p_user_id: userId,
+          p_bet:     betSnapshot,
+          p_payout:  totalPayout,
         });
 
-        // Fire-and-forget: persist spin to Supabase — batched every 10 spins
-        // to reduce DB write volume at scale (10K users × 1 spin/s = 10K writes/s unbatched)
-        if (userId) {
-          const BATCH_SIZE = 10;
-          const spinBuffer = (useGameStore as unknown as { _spinBuffer?: typeof _spinBatch })._spinBuffer;
-          if (!spinBuffer) {
-            (useGameStore as unknown as { _spinBuffer: typeof _spinBatch })._spinBuffer = _spinBatch;
-          }
-          _spinBatch.push({ user_id: userId, game_id: state.activeGameId, bet: state.bet, payout: totalPayout, is_free_spin: false });
-          if (_spinBatch.length >= BATCH_SIZE) {
-            const batch = _spinBatch.splice(0, BATCH_SIZE);
-            supabase.from('spins').insert(batch).then(({ error }) => {
-              if (error && import.meta.env.DEV) console.warn('[gameStore] batch insert failed:', error.message);
-            });
+        _spinPending = false;
+
+        if (error) {
+          console.warn('[gameStore] apply_spin_result failed:', error.message);
+        } else if (data && typeof data === 'object' && 'balance' in data) {
+          const serverBalance = Number((data as { balance: number }).balance);
+          if (Math.abs(serverBalance - newBalance) > 0.01) {
+            useGameStore.setState({ balance: serverBalance });
+            const { useAuthStore } = await import('./authStore');
+            useAuthStore.setState((s) => ({
+              profile: s.profile ? { ...s.profile, balance: serverBalance } : null,
+            }));
           }
         }
-      }
+
+        // Award VIP points
+        const { useVIPStore } = await import('./vipStore');
+        useVIPStore.getState().awardPoints(userId, betSnapshot, 'bet');
+        if (totalPayout < betSnapshot) {
+          useVIPStore.getState().recordLoss(userId, betSnapshot - totalPayout);
+        }
+
+        // Persist spin record for financial reporting
+        const { error: spinErr } = await supabase.from('spins').insert({
+          user_id:      userId,
+          game_id:      gameIdSnapshot,
+          bet:          betSnapshot,
+          payout:       totalPayout,
+          is_free_spin: false,
+        });
+        if (spinErr) console.warn('[gameStore] spin insert failed:', spinErr.message, spinErr.code);
+      })();
     }
 
     const stats = getSessionStats();
@@ -231,16 +272,22 @@ export const useGameStore = create<GameState>((set, get) => ({
       isJackpot: jackpotWinAmount > 0,
       sessionRTP: stats.currentRTP,
     });
+
+    // Keep authStore profile balance in sync so navbar shows correct value
+    import('./authStore').then(({ useAuthStore }) => {
+      useAuthStore.setState((s) => ({
+        profile: s.profile ? { ...s.profile, balance: newBalance } : null,
+      }));
+    });
   },
 
   setBet: (direction) => {
     const { bet } = get();
-    const currentIndex = BET_LADDER.indexOf(bet);
-    const index = currentIndex === -1 ? BET_LADDER.indexOf(DEFAULT_BET) : currentIndex;
+    const MAX = 10_000; // bet cap — the balance check is handled by SPIN button disabled state
     if (direction === 'up') {
-      set({ bet: BET_LADDER[Math.min(index + 1, BET_LADDER.length - 1)] });
+      set({ bet: Math.min(bet + 1, MAX) });
     } else {
-      set({ bet: BET_LADDER[Math.max(index - 1, 0)] });
+      set({ bet: Math.max(bet - 1, 1) });
     }
   },
 

@@ -2,8 +2,10 @@ import { useRef, useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '../../store/gameStore';
 import { setMusicVolume, getMusicVolume } from '../../utils/jamendo';
+import { useTranslation } from '../../i18n/useTranslation';
 
 export default function SpinControls() {
+  const t = useTranslation();
   const { isSpinning, balance, bet, autoplay, turboMode, soundEnabled, spin, toggleAutoplay, toggleTurboMode, toggleSound } = useGameStore();
   const [showVolume, setShowVolume] = useState(false);
   const [volume, setVolume] = useState(() => getMusicVolume());
@@ -49,43 +51,52 @@ export default function SpinControls() {
 
   return (
     <div className="flex flex-col items-center shrink-0">
-      {/* SPIN button — large rounded, yellow glow */}
+      {/* SPIN button — scales with viewport, min 72px on tiny screens */}
       <motion.button
         onClick={spin}
         disabled={isDisabled}
         animate={isDisabled ? disabledAnimate : glowAnimate}
         transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
-        className={`w-24 h-24 rounded-full bg-yellow-400 text-black font-orbitron font-bold text-xl
+        className={`rounded-full bg-yellow-400 text-black font-orbitron font-bold transition-opacity
           ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+        style={{
+          width:    'clamp(72px, 20vw, 96px)',
+          height:   'clamp(72px, 20vw, 96px)',
+          fontSize: 'clamp(14px, 4vw, 20px)',
+        }}
       >
-        {isSpinning ? '...' : 'SPIN'}
+        {isSpinning ? '...' : t.slot_spin}
       </motion.button>
 
-      {/* Toggle row */}
-      <div className="flex gap-4 justify-center mt-3">
+      {/* Toggle row — compact on small screens */}
+      <div className="flex gap-2 xs:gap-4 justify-center mt-1.5 xs:mt-3">
         {/* AUTOPLAY toggle */}
         <button
           onClick={toggleAutoplay}
-          className={`border rounded-full px-4 py-1.5 text-xs font-orbitron transition-colors
+          className={`border rounded-full px-2.5 xs:px-4 py-1 xs:py-1.5 font-orbitron transition-colors
             ${autoplay
               ? 'border-neon-yellow text-neon-yellow bg-neon-yellow/10'
               : 'border-white/20 text-gray-400 hover:border-white/40'
             }`}
+          style={{ fontSize: 'clamp(9px, 2.5vw, 12px)' }}
         >
-          AUTO
+          {t.slot_auto}
         </button>
 
         {/* TURBO toggle */}
         <button
           onClick={toggleTurboMode}
-          className={`border rounded-full px-4 py-1.5 text-xs font-orbitron transition-all duration-200
+          className={`border rounded-full px-2.5 xs:px-4 py-1 xs:py-1.5 font-orbitron transition-all duration-200
             ${turboMode
               ? 'border-cyan-400 text-cyan-400 bg-cyan-400/10 shadow-[0_0_12px_rgba(34,211,238,0.4)]'
               : 'border-white/20 text-gray-400 hover:border-white/40'
             }`}
-          style={turboMode ? { textShadow: '0 0 8px rgba(34,211,238,0.8)' } : undefined}
+          style={{
+            fontSize: 'clamp(9px, 2.5vw, 12px)',
+            ...(turboMode ? { textShadow: '0 0 8px rgba(34,211,238,0.8)' } : {}),
+          }}
         >
-          {turboMode ? '⚡ TURBO' : 'TURBO'}
+          {turboMode ? `⚡ ${t.slot_turbo}` : t.slot_turbo}
         </button>
 
         {/* SOUND toggle + volume popup */}
@@ -98,11 +109,12 @@ export default function SpinControls() {
                 setShowVolume((v) => !v);
               }
             }}
-            className={`rounded-full px-3 py-1.5 border text-xs font-orbitron transition-colors
+            className={`rounded-full px-2.5 xs:px-3 py-1 xs:py-1.5 border font-orbitron transition-colors
               ${soundEnabled
                 ? 'border-neon-yellow text-neon-yellow bg-neon-yellow/10'
                 : 'border-white/20 text-gray-400 hover:border-white/40'
               }`}
+            style={{ fontSize: 'clamp(9px, 2.5vw, 12px)' }}
           >
             {soundEnabled ? (volume === 0 ? '🔇' : volume < 0.5 ? '🔉' : '🔊') : '🔇'}
           </button>

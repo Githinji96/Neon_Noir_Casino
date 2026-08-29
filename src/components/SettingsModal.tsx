@@ -508,11 +508,15 @@ export default function SettingsModal() {
                     </Row>
                     <SectionTitle>Language</SectionTitle>
                     <Row label="Language">
-                      <select value={settings.language} onChange={(e) => updateSettings({ language: e.target.value })}
-                        className="bg-white/5 border border-white/10 rounded-lg px-3 py-1 text-sm text-white focus:outline-none">
-                        <option value="en">🇬🇧 English</option>
-                        <option value="sw">🇰🇪 Swahili</option>
-                        <option value="fr">🇫🇷 French</option>
+                      <select
+                        value={settings.language}
+                        onChange={(e) => updateSettings({ language: e.target.value })}
+                        className="border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-yellow-400/50"
+                        style={{ background: '#0d0020', colorScheme: 'dark' }}
+                      >
+                        <option value="en" style={{ background: '#0d0020', color: '#fff' }}>🇬🇧 English</option>
+                        <option value="sw" style={{ background: '#0d0020', color: '#fff' }}>🇰🇪 Swahili</option>
+                        <option value="fr" style={{ background: '#0d0020', color: '#fff' }}>🇫🇷 French</option>
                       </select>
                     </Row>
                     <SectionTitle>Currency</SectionTitle>

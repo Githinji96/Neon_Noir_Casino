@@ -11,6 +11,7 @@ import NotificationBell from './NotificationBell';
 import { useSettingsStore } from '../store/settingsStore';
 import { useNotificationStore } from '../store/notificationStore';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from '../i18n/useTranslation';
 
 interface NavbarProps {
   activeTab?: string;
@@ -18,17 +19,17 @@ interface NavbarProps {
 }
 
 const QUICK_NAV = [
-  { label: 'SLOTS',       path: '/slots',       icon: '🎰' },
-  { label: 'LIVE TABLES', path: '/live-tables',  icon: '🃏' },
-  { label: 'JACKPOTS',    path: '/jackpots',     icon: '🏆' },
-  { label: 'VIP',         path: '/vip',          icon: '👑' },
+  { labelKey: 'nav_slots' as const,       path: '/',            icon: '🎰' },
+  { labelKey: 'nav_live_tables' as const, path: '/live-tables',  icon: '🃏' },
+  { labelKey: 'nav_jackpots' as const,    path: '/jackpots',     icon: '🏆' },
+  { labelKey: 'nav_vip' as const,         path: '/vip',          icon: '👑' },
 ];
 
 const NAV_LINKS = [
-  { label: 'Slots',       path: '/slots',       icon: '🎰' },
-  { label: 'Live Tables', path: '/live-tables',  icon: '🃏' },
-  { label: 'Jackpots',    path: '/jackpots',     icon: '🏆' },
-  { label: 'VIP',         path: '/vip',          icon: '👑' },
+  { labelKey: 'nav_slots' as const,       path: '/',            icon: '🎰' },
+  { labelKey: 'nav_live_tables' as const, path: '/live-tables',  icon: '🃏' },
+  { labelKey: 'nav_jackpots' as const,    path: '/jackpots',     icon: '🏆' },
+  { labelKey: 'nav_vip' as const,         path: '/vip',          icon: '👑' },
 ];
 
 function formatBalance(balance: number): string {
@@ -53,11 +54,14 @@ function MenuRow({ icon, label, onClick, danger }: {
 }
 
 export default function Navbar({ activeTab, compact }: NavbarProps) {
+  const t = useTranslation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
   const [depositOpen, setDepositOpen] = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [polling, setPolling] = useState(false);
+  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollingSafetyRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
   const openSettings = useSettingsStore((s) => s.openSettings);
   const unreadCount  = useNotificationStore((s) => s.unreadCount);
   const location = useLocation();
@@ -91,6 +95,14 @@ export default function Navbar({ activeTab, compact }: NavbarProps) {
     return () => { document.body.style.overflow = ''; };
   }, [mobileMenuOpen]);
 
+  // Clean up polling timers if Navbar unmounts mid-poll (e.g. route change)
+  useEffect(() => {
+    return () => {
+      if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+      if (pollingSafetyRef.current)   clearTimeout(pollingSafetyRef.current);
+    };
+  }, []);
+
   const handlePolling = (checkoutId: string) => {
     if (!checkoutId) return;
     setPolling(true);
@@ -112,15 +124,17 @@ export default function Navbar({ activeTab, compact }: NavbarProps) {
     };
 
     const stop = (success: boolean) => {
-      clearInterval(interval);
-      clearTimeout(safetyTimer);
+      if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+      if (pollingSafetyRef.current)   clearTimeout(pollingSafetyRef.current);
+      pollingIntervalRef.current = null;
+      pollingSafetyRef.current   = null;
       setPolling(false);
       if (success) syncBalance();
     };
 
-    const safetyTimer = setTimeout(() => stop(false), 40_000);
+    pollingSafetyRef.current = setTimeout(() => stop(false), 40_000);
 
-    const interval = setInterval(async () => {
+    pollingIntervalRef.current = setInterval(async () => {
       attempts++;
       try {
         const { data } = await supabase
@@ -184,11 +198,11 @@ export default function Navbar({ activeTab, compact }: NavbarProps) {
 
         {/* Desktop center nav */}
         <ul className="hidden lg:flex items-center gap-6 flex-1 justify-center">
-          {NAV_LINKS.map(({ label, path, icon }) => (
+          {NAV_LINKS.map(({ labelKey, path, icon }) => (
             <li key={path}>
               <Link to={path} className={`flex items-center gap-1.5 font-orbitron text-sm tracking-wider transition-colors ${isActive(path) ? 'text-neon-yellow' : 'text-gray-400 hover:text-white'}`}>
                 <span className="text-base leading-none">{icon}</span>
-                {label}
+                {t[labelKey]}
               </Link>
             </li>
           ))}
@@ -212,11 +226,11 @@ export default function Navbar({ activeTab, compact }: NavbarProps) {
             <div className="hidden lg:flex items-center gap-2 ml-1">
               <button onClick={() => !polling && setDepositOpen(true)}
                 className="btn-neon px-3 py-1.5 rounded-full text-xs font-orbitron">
-                {polling ? 'PENDING...' : 'DEPOSIT'}
+                {polling ? t.nav_pending : t.nav_deposit}
               </button>
               <button onClick={() => setWithdrawOpen(true)}
                 className="btn-neon px-3 py-1.5 rounded-full text-xs font-orbitron">
-                WITHDRAW
+                {t.nav_withdraw}
               </button>
             </div>
           )}
@@ -260,7 +274,7 @@ export default function Navbar({ activeTab, compact }: NavbarProps) {
           {!user && (
             <button onClick={() => navigate('/auth/login')}
               className="lg:hidden font-orbitron text-[10px] font-bold px-2.5 py-1 rounded-full border border-yellow-400/50 text-yellow-400">
-              LOGIN
+              {t.nav_login}
             </button>
           )}
 
@@ -278,7 +292,7 @@ export default function Navbar({ activeTab, compact }: NavbarProps) {
 
       {/* ── QUICK NAV ICONS (mobile + tablet) ── */}
       <div data-testid="quick-nav" className={`lg:hidden flex justify-around items-center px-1 py-2 border-t border-white/5${compact ? ' slot-hide' : ''}`}>
-        {QUICK_NAV.map(({ label, path, icon }) => (
+        {QUICK_NAV.map(({ labelKey, path, icon }) => (
           <Link key={path} to={path}
             className={`flex flex-col items-center gap-0.5 flex-1 py-2 rounded-xl border transition-colors mx-0.5 ${
               isActive(path)
@@ -286,7 +300,7 @@ export default function Navbar({ activeTab, compact }: NavbarProps) {
                 : 'border-white/10 bg-white/5 text-gray-400'
             }`}>
             <span className="text-xl leading-none">{icon}</span>
-            <span className="font-orbitron text-[8px] tracking-wide font-bold leading-tight text-center px-0.5">{label}</span>
+            <span className="font-orbitron text-[8px] tracking-wide font-bold leading-tight text-center px-0.5">{t[labelKey]}</span>
           </Link>
         ))}
       </div>

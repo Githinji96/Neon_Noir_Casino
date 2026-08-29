@@ -42,10 +42,10 @@ function cellBg(symbolId: string) {
 const COLS = 5;
 const ROWS = 3;
 // Fluid sizing constants — actual px resolved at render time from container width
-const PANEL_PAD_X = 12;  // px horizontal padding inside the panel
-const PANEL_PAD_Y = 8;   // px vertical padding inside the panel
-const COL_GAP     = 6;   // px gap between columns
-const ROW_GAP     = 6;   // px gap between rows
+const PANEL_PAD_X = 8;   // px horizontal padding inside the panel (reduced for mobile)
+const PANEL_PAD_Y = 6;   // px vertical padding inside the panel
+const COL_GAP     = 4;   // px gap between columns
+const ROW_GAP     = 4;   // px gap between rows
 
 interface GameCanvasProps {
   gameId: string;
@@ -70,7 +70,8 @@ export default function GameCanvas({ gameId, animationSpeed = 'normal', onSpinCo
       const availableW = outerRef.current.clientWidth;
       const panelInnerWidth = availableW - PANEL_PAD_X * 2;
       const computed = Math.floor((panelInnerWidth - COL_GAP * (COLS - 1)) / COLS);
-      setCellSize(Math.max(44, Math.min(72, computed)));
+      // Min 36px (Nokia 320px), max 72px (desktop)
+      setCellSize(Math.max(36, Math.min(72, computed)));
     };
     measure();
     const ro = new ResizeObserver(measure);

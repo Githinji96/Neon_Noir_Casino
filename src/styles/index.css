@@ -324,3 +324,20 @@ input:-webkit-autofill:active {
   from { transform: scale(1);    box-shadow: 0 0 14px rgba(255,215,0,0.5); }
   to   { transform: scale(1.07); box-shadow: 0 0 22px rgba(255,215,0,0.85); }
 }
+
+/* ── Mobile bottom navigation — page content padding ──────────────────────── */
+/* Prevents content from being hidden behind the fixed BottomNav on mobile.    */
+/* Only applies below md (768px) where BottomNav is visible.                   */
+@media (max-width: 767px) {
+  /* Public pages that have a BottomNav get extra bottom padding */
+  body > #root > * {
+    /* BottomNav height (~60px) + safe-area inset */
+    padding-bottom: calc(60px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Slot machine and live-table room are full-screen — no extra padding needed */
+  .slot-page-root,
+  .live-table-room {
+    padding-bottom: 0 !important;
+  }
+}

@@ -1,4 +1,4 @@
-import { defineConfig, devices } from '@playwright/test';
+﻿import { defineConfig } from '@playwright/test';
 
 /**
  * Neon Noir Casino — Playwright configuration
@@ -18,8 +18,17 @@ const BASE_URL   = process.env.BASE_URL   ?? 'http://localhost:5173';
 const AUTH_STATE = 'e2e/.auth/auth-state.json';
 
 // Detect system Chrome or Edge — whichever is present
-// Playwright resolves these via the `channel` option automatically on Windows.
-const BROWSER_CHANNEL = process.env.BROWSER_CHANNEL ?? 'msedge'; // Edge is installed
+const BROWSER_CHANNEL = process.env.BROWSER_CHANNEL ?? 'msedge';
+
+/** Specs that require an authenticated session — excluded from anonymous projects */
+const AUTH_ONLY_SPECS = [
+  '**/slot.spec.ts',
+  '**/slot-betting.spec.ts',
+  '**/deposit-withdraw.spec.ts',
+  '**/notifications.spec.ts',
+  '**/settings.spec.ts',
+  '**/auth.spec.ts',
+];
 
 export default defineConfig({
   testDir: './e2e',
@@ -43,7 +52,6 @@ export default defineConfig({
     video:      'on-first-retry',
     ignoreHTTPSErrors: true,
     viewport: { width: 1440, height: 900 },
-    /* Use system-installed Chrome — no Playwright browser download needed */
     channel: BROWSER_CHANNEL,
   },
 
@@ -52,33 +60,17 @@ export default defineConfig({
     {
       name: 'desktop',
       use: { channel: BROWSER_CHANNEL, viewport: { width: 1440, height: 900 } },
-      // slot/deposit/notifications/settings/auth run only in chromium-auth (needs real session)
-      testIgnore: [
-        '**/slot.spec.ts',
-        '**/deposit-withdraw.spec.ts',
-        '**/notifications.spec.ts',
-        '**/settings.spec.ts',
-      ],
+      testIgnore: AUTH_ONLY_SPECS,
     },
     {
       name: 'laptop',
       use: { channel: BROWSER_CHANNEL, viewport: { width: 1366, height: 768 } },
-      testIgnore: [
-        '**/slot.spec.ts',
-        '**/deposit-withdraw.spec.ts',
-        '**/notifications.spec.ts',
-        '**/settings.spec.ts',
-      ],
+      testIgnore: AUTH_ONLY_SPECS,
     },
     {
       name: 'tablet',
       use: { channel: BROWSER_CHANNEL, viewport: { width: 768, height: 1024 } },
-      testIgnore: [
-        '**/slot.spec.ts',
-        '**/deposit-withdraw.spec.ts',
-        '**/notifications.spec.ts',
-        '**/settings.spec.ts',
-      ],
+      testIgnore: AUTH_ONLY_SPECS,
     },
     {
       name: 'mobile',
@@ -91,12 +83,7 @@ export default defineConfig({
         hasTouch: true,
         isMobile: true,
       },
-      testIgnore: [
-        '**/slot.spec.ts',
-        '**/deposit-withdraw.spec.ts',
-        '**/notifications.spec.ts',
-        '**/settings.spec.ts',
-      ],
+      testIgnore: AUTH_ONLY_SPECS,
     },
 
     /* ── Authenticated — desktop only ────────────────────────────── */
@@ -109,6 +96,7 @@ export default defineConfig({
       },
       testMatch: [
         '**/slot.spec.ts',
+        '**/slot-betting.spec.ts',
         '**/deposit-withdraw.spec.ts',
         '**/notifications.spec.ts',
         '**/settings.spec.ts',

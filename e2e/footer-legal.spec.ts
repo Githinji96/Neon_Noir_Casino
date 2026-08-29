@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { ContactPage as ContactPageObject } from './pages/ContactPage';
 import { waitForPageReady, scrollToBottom, waitForAnimation } from './helpers/waitHelpers';
 
@@ -8,7 +8,7 @@ import { waitForPageReady, scrollToBottom, waitForAnimation } from './helpers/wa
  * The footer starts at opacity:0 with initial={{ opacity: 0 }} framer-motion
  * and only becomes visible when `visible` state is set true.
  */
-async function showFooter(page: Parameters<Parameters<typeof test>[1]>[0]['page']) {
+async function showFooter(page: Page) {
   await scrollToBottom(page);
   // Give IntersectionObserver time to fire (threshold: 0.05)
   await page.waitForTimeout(800);

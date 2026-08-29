@@ -20,6 +20,7 @@ import { useAdminStore } from './store/adminStore';
 import AdminAuthGuard from './components/admin/AdminAuthGuard';
 import MusicManager from './components/MusicManager';
 import Footer from './components/Footer';
+import BottomNav from './components/BottomNav';
 import ScrollToTop from './components/ScrollToTop';
 
 // Lazy-load admin pages to keep main bundle small
@@ -94,7 +95,7 @@ function ProtectedRoute() {
   return user ? <Outlet /> : <Navigate to="/auth/login" state={{ from: location }} replace />;
 }
 
-/** Layout wrapper that adds the Footer to all public pages */
+/** Layout wrapper that adds the Footer and mobile BottomNav to all public pages */
 function PublicLayout() {
   const location = useLocation();
   // Don't show footer inside the slot machine or live table room (immersive pages)
@@ -103,6 +104,8 @@ function PublicLayout() {
     <>
       <Outlet />
       {!noFooter && <Footer />}
+      {/* Mobile bottom navigation — renders on all public pages, hides itself on /slot */}
+      <BottomNav />
     </>
   );
 }

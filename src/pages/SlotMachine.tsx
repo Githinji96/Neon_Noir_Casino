@@ -21,6 +21,7 @@ import WinDisplay from './SlotMachine/WinDisplay';
 import SpinControls from './SlotMachine/SpinControls';
 import BettingControls from './SlotMachine/BettingControls';
 import GameCanvas from '../pixi/GameCanvas';
+import { useTranslation } from '../i18n/useTranslation';
 
 interface SlotMachinePageProps {
   onBack?: () => void;
@@ -30,10 +31,15 @@ export default function SlotMachinePage({ onBack }: SlotMachinePageProps) {
   const [loading, setLoading] = useState(true);
   const location = useLocation();
   const navigate = useNavigate();
-  const gameId      = (location.state as { id?: string; title?: string; jackpotMode?: boolean } | null)?.id ?? 'cyber-strike-777';
-  const gameTitle   = (location.state as { id?: string; title?: string; jackpotMode?: boolean } | null)?.title ?? 'Cyber Strike 777';
+  // Support ?game= query param as a fallback for direct navigation (e.g. Playwright tests).
+  // Production navigation always uses location.state from navigate('/slot', { state: {...} }).
+  const searchParams = new URLSearchParams(location.search);
+  const qpGame = searchParams.get('game');
+  const locationState = location.state as { id?: string; title?: string; jackpotMode?: boolean } | null;
+  const gameId    = locationState?.id    ?? qpGame ?? 'neon-jungle-fruits';
+  const gameTitle = locationState?.title ?? (qpGame ? qpGame.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : 'Neon Jungle Fruits');
   // Cyber Strike 777 always runs in jackpot mode (fixed KES 100 bet)
-  const jackpotMode = gameId === 'cyber-strike-777' ? true : (location.state as { id?: string; title?: string; jackpotMode?: boolean } | null)?.jackpotMode ?? false;
+  const jackpotMode = gameId === 'cyber-strike-777' ? true : locationState?.jackpotMode ?? false;
 
   // If no onBack prop (navigated directly e.g. from jackpots page), go back in history or to lobby
   const handleBack = onBack ?? (() => {
@@ -62,6 +68,7 @@ export default function SlotMachinePage({ onBack }: SlotMachinePageProps) {
   const { syncBalance, recordWin } = useAuthStore();
   const pendingJackpotWin = useJackpotStore((s) => s.pendingWin);
   const clearPendingWin = useJackpotStore((s) => s.clearPendingWin);
+  const t = useTranslation();
 
   const prevSpinning = useRef(false);
 
@@ -157,6 +164,14 @@ export default function SlotMachinePage({ onBack }: SlotMachinePageProps) {
     return () => clearTimeout(timer);
   }, [gameId, jackpotMode]);
 
+  // Reset spin/autoplay state on unmount so navigating away mid-spin
+  // doesn't leave the SPIN button permanently frozen when the user returns.
+  useEffect(() => {
+    return () => {
+      useGameStore.setState({ isSpinning: false, autoplay: false });
+    };
+  }, []);
+
   // Spin animation timing: set isSpinning=false after animation completes
   useEffect(() => {
     if (!isSpinning) return;
@@ -214,7 +229,7 @@ export default function SlotMachinePage({ onBack }: SlotMachinePageProps) {
       <div className="min-h-screen bg-gray-950 flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <div className="w-16 h-16 rounded-full border-4 border-yellow-300 border-t-transparent animate-spin" />
-          <span className="font-orbitron text-yellow-300 tracking-widest text-sm">LOADING...</span>
+          <span className="font-orbitron text-yellow-300 tracking-widest text-sm">{t.loading}</span>
         </div>
       </div>
     );
@@ -225,26 +240,26 @@ export default function SlotMachinePage({ onBack }: SlotMachinePageProps) {
       <Navbar compact />
 
       <main
-        className="flex-1 min-h-0 w-full max-w-2xl mx-auto px-4 flex flex-col overflow-hidden"
+        className="flex-1 min-h-0 w-full max-w-2xl mx-auto px-2 xs:px-3 sm:px-4 flex flex-col overflow-hidden"
       >
         {/* ── Header: ← LOBBY left, TITLE centered ── */}
-        <div className="relative flex items-center justify-center pt-2 pb-1.5 shrink-0">
+        <div className="relative flex items-center justify-center pt-1 xs:pt-2 pb-0.5 xs:pb-1.5 shrink-0">
           <button
             onClick={handleBack}
-            className="absolute left-0 font-orbitron text-sm text-gray-400 hover:text-white tracking-widest transition-colors"
+            className="absolute left-0 font-orbitron text-[10px] xs:text-sm text-gray-400 hover:text-white tracking-widest transition-colors"
           >
-            ← LOBBY
+            {t.slot_lobby}
           </button>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             <h1
-              className="font-orbitron text-lg sm:text-2xl font-bold text-yellow-300 tracking-widest"
-              style={{ textShadow: '0 0 12px rgba(253,224,71,0.7)' }}
+              className="font-orbitron text-sm xs:text-base sm:text-2xl font-bold text-yellow-300 tracking-widest truncate max-w-[160px] xs:max-w-[200px] sm:max-w-none"
+              style={{ textShadow: '0 0 12px rgba(253,224,71,0.7)', fontSize: 'clamp(11px, 3.5vw, 22px)' }}
             >
               {gameTitle.toUpperCase()}
             </h1>
             {jackpotMode && (
               <span
-                className="px-1.5 py-0.5 rounded-full font-orbitron text-[9px] font-bold animate-pulse shrink-0"
+                className="px-1 py-0.5 rounded-full font-orbitron text-[8px] xs:text-[9px] font-bold animate-pulse shrink-0"
                 style={{ background: 'rgba(255,215,0,0.2)', border: '1px solid rgba(255,215,0,0.5)', color: '#FFD700' }}
               >
                 💰 JACKPOT
@@ -254,15 +269,15 @@ export default function SlotMachinePage({ onBack }: SlotMachinePageProps) {
         </div>
 
         {/* ── Balance / payout panel ── */}
-        <div className="shrink-0 mt-1">
+        <div className="shrink-0 mt-0.5 xs:mt-1">
           <WinDisplay />
         </div>
 
-        {/* ── FreeSpins banner (conditional, sits between balance and reels) ── */}
+        {/* ── FreeSpins banner (conditional) ── */}
         <FreeSpinsBanner />
 
-        {/* ── Reel canvas — tight below balance panel ── */}
-        <div className="w-full flex justify-center mt-2 shrink-0">
+        {/* ── Reel canvas ── */}
+        <div className="w-full flex justify-center mt-1 xs:mt-2 shrink-0">
           <GameCanvas
             gameId={gameId}
             animationSpeed={animationSpeed}
@@ -275,18 +290,16 @@ export default function SlotMachinePage({ onBack }: SlotMachinePageProps) {
         </div>
 
         {/* ── Controls packed immediately below reels ── */}
-        <div className="flex flex-col items-center mt-3 shrink-0">
+        <div className="flex flex-col items-center mt-1 xs:mt-2 sm:mt-3 shrink-0">
           <SpinControls />
           <BettingControls />
           <button
             onClick={openPaytable}
-            className="px-6 py-1.5 rounded-full border border-white/20 text-gray-400 font-orbitron text-xs hover:text-white hover:border-white/40 transition-colors mt-2"
+            className="px-4 xs:px-6 py-1 xs:py-1.5 rounded-full border border-white/20 text-gray-400 font-orbitron text-[10px] xs:text-xs hover:text-white hover:border-white/40 transition-colors mt-1 xs:mt-2"
           >
             PAYTABLE
           </button>
-          {balance === 0 && (
-            <p className="font-orbitron text-red-400 text-[10px] tracking-widest mt-1">NO FUNDS</p>
-          )}
+          {balance === 0 && null}
         </div>
 
         {/* ── Spacer — absorbs leftover height on tall screens ── */}

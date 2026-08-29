@@ -205,11 +205,12 @@ export default function CasinoFinancialPage() {
 
   useEffect(() => { void fetchAll(); }, [fetchAll]);
 
-  // ── Realtime refresh on new transactions ───────────────────────────────────
+  // ── Realtime refresh on new transactions OR spins ────────────────────────
   useEffect(() => {
     const ch = supabase
       .channel('casino_finance_watch')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, () => void fetchAll())
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'spins' }, () => void fetchAll())
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [fetchAll]);
