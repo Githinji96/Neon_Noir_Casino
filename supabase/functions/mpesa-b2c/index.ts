@@ -12,16 +12,30 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
+// Restrict CORS to the app's own origin — this function should only be
+// called from the admin panel, never from arbitrary third-party origins.
+// The Authorization header check provides the primary security layer,
+// but restricting the origin adds defence in depth.
+const ALLOWED_ORIGIN = Deno.env.get('APP_ORIGIN') ?? 'https://oeyghrweqkyncxualpxn.supabase.co';
 
-function json(data: unknown, status = 200) {
+function corsHeaders(req: Request) {
+  const origin = req.headers.get('origin') ?? '';
+  // Allow the configured app origin or localhost for development
+  const allowedOrigin = (origin.includes('localhost') || origin === ALLOWED_ORIGIN)
+    ? origin
+    : ALLOWED_ORIGIN;
+  return {
+    'Access-Control-Allow-Origin': allowedOrigin,
+    'Access-Control-Allow-Headers': 'authorization, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Vary': 'Origin',
+  };
+}
+
+function json(data: unknown, status = 200, req?: Request) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { ...CORS, 'Content-Type': 'application/json' },
+    headers: { ...(req ? corsHeaders(req) : {}), 'Content-Type': 'application/json' },
   });
 }
 
@@ -44,7 +58,7 @@ async function getAccessToken(base: string, key: string, secret: string): Promis
 }
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });
+  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders(req) });
 
   // Read all env vars first
   const serviceKey       = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';

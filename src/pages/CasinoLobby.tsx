@@ -42,7 +42,7 @@ export default function CasinoLobby({ onNavigateToSlot }: CasinoLobbyProps) {
       <JackpotWinToast />
 
       <main className="bg-gradient-to-b from-casino-dark to-black pb-24 md:pb-0">
-        <HeroSection onPlayNow={() => onNavigateToSlot()} />
+        <HeroSection onPlayNow={() => onNavigateToSlot('mega-moolah-noir', 'Mega Moolah Noir', true)} />
 
         <NewArrivalsSection onGameClick={onNavigateToSlot} onSeeAll={handleSeeAll} />
         <PopularChoicesSection onGameClick={onNavigateToSlot} sectionRef={popularRef} />

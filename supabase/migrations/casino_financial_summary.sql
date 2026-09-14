@@ -10,7 +10,7 @@ CREATE OR REPLACE FUNCTION public.get_casino_financial_summary(
   p_end   timestamptz DEFAULT NULL    -- NULL = now()
 )
 RETURNS jsonb
-LANGUAGE plpgsql
+LANGUAGE plpgsqlv
 SECURITY DEFINER
 STABLE
 SET search_path = public

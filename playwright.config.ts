@@ -20,14 +20,15 @@ const AUTH_STATE = 'e2e/.auth/auth-state.json';
 // Detect system Chrome or Edge — whichever is present
 const BROWSER_CHANNEL = process.env.BROWSER_CHANNEL ?? 'msedge';
 
-/** Specs that require an authenticated session — excluded from anonymous projects */
+/** Specs that require saved auth state — excluded from the desktop project,
+ *  run only under chromium-auth which loads e2e/.auth/auth-state.json */
 const AUTH_ONLY_SPECS = [
-  '**/slot.spec.ts',
-  '**/slot-betting.spec.ts',
+  '**/slot.spec.ts',          // needs chromium-auth saved state
+  '**/slot-betting.spec.ts',  // needs chromium-auth saved state
   '**/deposit-withdraw.spec.ts',
   '**/notifications.spec.ts',
   '**/settings.spec.ts',
-  '**/auth.spec.ts',
+  '**/liveTables.spec.ts',    // runs under its own live-tables project
 ];
 
 export default defineConfig({
@@ -36,7 +37,9 @@ export default defineConfig({
   timeout: 35_000,
   expect: { timeout: 10_000 },
   retries: process.env.CI ? 2 : 1,
-  workers: process.env.CI ? 1 : undefined,
+  // Cap at 2 workers locally — the live tables tests do heavy login+bet flows
+  // and running too many in parallel crashes the Vite dev server.
+  workers: process.env.CI ? 1 : 2,
 
   reporter: [
     ['list'],
@@ -56,12 +59,14 @@ export default defineConfig({
   },
 
   projects: [
-    /* ── Anonymous projects ──────────────────────────────────────── */
+    /* ── Desktop — anonymous specs + auth.spec (uses loginViaUI) ────── */
     {
       name: 'desktop',
       use: { channel: BROWSER_CHANNEL, viewport: { width: 1440, height: 900 } },
       testIgnore: AUTH_ONLY_SPECS,
     },
+
+    /* ── Other viewports — anonymous specs only ──────────────────── */
     {
       name: 'laptop',
       use: { channel: BROWSER_CHANNEL, viewport: { width: 1366, height: 768 } },
@@ -86,7 +91,7 @@ export default defineConfig({
       testIgnore: AUTH_ONLY_SPECS,
     },
 
-    /* ── Authenticated — desktop only ────────────────────────────── */
+    /* ── Authenticated — desktop with saved auth state ───────────── */
     {
       name: 'chromium-auth',
       use: {
@@ -102,6 +107,17 @@ export default defineConfig({
         '**/settings.spec.ts',
         '**/auth.spec.ts',
       ],
+    },
+
+    /* ── Live Tables — desktop only, higher timeout for bet flows ── */
+    {
+      name: 'live-tables',
+      use: {
+        channel: BROWSER_CHANNEL,
+        viewport: { width: 1440, height: 900 },
+      },
+      testMatch: ['**/liveTables.spec.ts'],
+      timeout: 60_000,
     },
   ],
 

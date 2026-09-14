@@ -43,6 +43,8 @@ export function isSpinPending() { return _spinPending; }
 interface GameState {
   balance: number;
   bet: number;
+  minBet: number;   // per-game minimum from admin_game_config
+  maxBet: number;   // per-game maximum from admin_game_config
   reels: SpinGrid;
   freeSpinsRemaining: number;
   freeSpinsTotalWin: number;
@@ -75,6 +77,8 @@ interface GameState {
 export const useGameStore = create<GameState>((set, get) => ({
   balance: 0.00,
   bet: DEFAULT_BET,
+  minBet: 1,       // updated by setGame from admin_game_config
+  maxBet: 10_000,  // updated by setGame from admin_game_config
   reels: Array.from({ length: 5 }, () => Array(3).fill('bell')) as SpinGrid, // safe initial grid, replaced on first spin
   freeSpinsRemaining: 0,
   freeSpinsTotalWin: 0,
@@ -282,12 +286,11 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   setBet: (direction) => {
-    const { bet } = get();
-    const MAX = 10_000; // bet cap — the balance check is handled by SPIN button disabled state
+    const { bet, minBet, maxBet } = get();
     if (direction === 'up') {
-      set({ bet: Math.min(bet + 1, MAX) });
+      set({ bet: Math.min(bet + 1, maxBet) });
     } else {
-      set({ bet: Math.max(bet - 1, 1) });
+      set({ bet: Math.max(bet - 1, minBet) });
     }
   },
 
@@ -299,14 +302,47 @@ export const useGameStore = create<GameState>((set, get) => ({
   setSpinning: (value: boolean) => set({ isSpinning: value }),
   clearWinResults: () => set({ winResults: [] }),
   endFreeSpins: () => set({ freeSpinsRemaining: 0, freeSpinsTotalWin: 0 }),
-  setGame: (gameId: string, jackpotMode = false) => {
+  setGame: (gameId: string, _jackpotMode = false) => {
     setActiveGame(gameId);
     setActiveGameRTP(gameId);
     const syms = getSymbolsForGame(gameId);
     const firstSym = syms[0]?.id ?? 'cherry';
     const idleGrid = Array.from({ length: 5 }, () => Array(3).fill(firstSym)) as SpinGrid;
-    // Cyber Strike 777 requires a fixed KES 100 bet when played in jackpot mode
-    const fixedBet = jackpotMode && gameId === 'cyber-strike-777' ? { bet: 100 } : {};
-    set({ activeGameId: gameId, jackpotMode, winResults: [], isSpinning: false, autoplay: false, reels: idleGrid, ...fixedBet });
+
+    // Mega Moolah Noir is the mega jackpot — bet is always fixed at KES 100,
+    // minBet = maxBet = 100 locks the controls.
+    const isMegaJackpot = gameId === 'mega-moolah-noir';
+    const fixedState = isMegaJackpot
+      ? { bet: 100, minBet: 100, maxBet: 100, jackpotMode: true }
+      : {};
+
+    set({
+      activeGameId: gameId,
+      jackpotMode: isMegaJackpot ? true : false,  // explicitly reset for all non-jackpot games
+      winResults: [],
+      isSpinning: false,
+      autoplay: false,
+      reels: idleGrid,
+      ...fixedState,
+    });
+
+    // For non-mega-jackpot games: load per-game bet limits from admin_game_config.
+    if (!isMegaJackpot) {
+      void Promise.resolve(supabase
+        .from('admin_game_config')
+        .select('min_bet, max_bet')
+        .eq('game_id', gameId)
+        .maybeSingle()
+      ).then(({ data }) => {
+          let minBet = data?.min_bet ?? 1;
+          let maxBet = data?.max_bet ?? 10_000;
+          if (minBet >= maxBet) { minBet = 1; maxBet = 10_000; }
+          const currentBet = useGameStore.getState().bet;
+          const clampedBet = Math.min(Math.max(currentBet, minBet), maxBet);
+          set({ minBet, maxBet, bet: clampedBet });
+        }).catch(() => {
+          set({ minBet: 1, maxBet: 10_000 });
+        });
+    }
   },
 }));

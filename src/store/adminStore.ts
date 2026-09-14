@@ -61,7 +61,7 @@ export interface RTPConfig {
 
 export interface AdminAlert {
   id: string;
-  type: 'rtp_deviation' | 'large_payout' | 'fraud_flag';
+  type: 'rtp_deviation' | 'large_payout' | 'fraud_flag' | 'jackpot_win';
   severity: 'high' | 'medium' | 'low';
   message: string;
   metadata: Record<string, unknown>;

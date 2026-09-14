@@ -96,8 +96,9 @@ export default function GamesPage() {
     const errors: Record<string, string> = {};
     const min = parseFloat(editForm.min_bet);
     const max = parseFloat(editForm.max_bet);
-    if (isNaN(min) || min < 1) errors.min_bet = 'Min bet must be ≥ 1';
+    if (isNaN(min) || min < 0.20) errors.min_bet = 'Min bet must be ≥ 0.20';
     if (isNaN(max) || max <= min) errors.max_bet = 'Max bet must be > min bet';
+    if (max > 10_000) errors.max_bet = 'Max bet cannot exceed KES 10,000';
     if (Object.keys(errors).length) { setEditForm((f) => ({ ...f, errors })); return; }
 
     await supabase.from('admin_game_config').upsert({ game_id: game.game_id, enabled: game.enabled, min_bet: min, max_bet: max, volatility: editForm.volatility }, { onConflict: 'game_id' });
@@ -186,8 +187,8 @@ export default function GamesPage() {
                           </div>
                           <div className="flex flex-col gap-1">
                             <label className="text-white/40 text-xs">Volatility</label>
-                            <select value={editForm.volatility} onChange={(e) => setEditForm((f) => ({ ...f, volatility: e.target.value }))} className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#FFD700]/50">
-                              {['low', 'medium', 'high'].map((v) => <option key={v} value={v}>{v}</option>)}
+                            <select value={editForm.volatility} onChange={(e) => setEditForm((f) => ({ ...f, volatility: e.target.value }))} className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white appearance-none focus:outline-none focus:border-[#FFD700] focus:ring-1 focus:ring-[#FFD700]">
+                              {['low', 'medium', 'high'].map((v) => <option key={v} value={v} className="bg-slate-900 text-white">{v}</option>)}
                             </select>
                           </div>
                           <div className="flex gap-2">

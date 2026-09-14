@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { supabase } from '../../lib/supabase';
 import { useAdminStore } from '../../store/adminStore';
@@ -153,6 +153,21 @@ function downloadCSV(rows: TxRow[]) {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+// ── Date preset helpers ───────────────────────────────────────────────────────
+
+function toLocalDateStr(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+const DATE_PRESETS = [
+  { label: 'Today',      getDates: () => { const t = toLocalDateStr(new Date()); return { start: t, end: t }; } },
+  { label: '7 days',     getDates: () => { const e = new Date(); const s = new Date(); s.setDate(s.getDate() - 6); return { start: toLocalDateStr(s), end: toLocalDateStr(e) }; } },
+  { label: '30 days',    getDates: () => { const e = new Date(); const s = new Date(); s.setDate(s.getDate() - 29); return { start: toLocalDateStr(s), end: toLocalDateStr(e) }; } },
+  { label: 'This month', getDates: () => { const n = new Date(); const s = new Date(n.getFullYear(), n.getMonth(), 1); return { start: toLocalDateStr(s), end: toLocalDateStr(n) }; } },
+  { label: 'All',        getDates: () => ({ start: '', end: '' }) },
+] as const;
+
 export default function FinancePage() {
   const { toast } = useToast();
   const { auditLog, adminProfile } = useAdminStore();
@@ -162,15 +177,25 @@ export default function FinancePage() {
   const [selectedTx, setSelectedTx] = useState<TxRow | null>(null);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [activePreset, setActivePreset] = useState<string>('All');
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
 
-  async function fetchTx() {
-    const { data, error } = await supabase
+  // Keep a ref to the active date range so the realtime callback always uses
+  // the latest values — not the stale closure from mount.
+  const dateRangeRef = useRef({ start: '', end: '' });
+
+  async function fetchTx(start: string, end: string) {
+    setLoading(true);
+    let query = supabase
       .from('transactions')
       .select('id, created_at, amount, type, status, mpesa_receipt, phone, approved_at, approved_by, rejection_reason, user_id, profiles(username)')
       .order('created_at', { ascending: false });
 
+    if (start) query = query.gte('created_at', `${start}T00:00:00`);
+    if (end)   query = query.lte('created_at', `${end}T23:59:59`);
+
+    const { data, error } = await query;
     if (error) {
       console.error('[FinancePage] fetchTx error:', error.message, error.code, error.details);
       toast(`Failed to load transactions: ${error.message}`, 'error');
@@ -179,24 +204,36 @@ export default function FinancePage() {
     setLoading(false);
   }
 
+  function applyPreset(preset: typeof DATE_PRESETS[number]) {
+    const { start, end } = preset.getDates();
+    // Clear the manual date inputs so they show the placeholder (mm/dd/yyyy)
+    setStartDate('');
+    setEndDate('');
+    setActivePreset(preset.label);
+    dateRangeRef.current = { start, end };
+    void fetchTx(start, end);
+  }
+
   useEffect(() => {
-    fetchTx();
+    fetchTx(dateRangeRef.current.start, dateRangeRef.current.end);
     const channel = supabase
       .channel('admin_transactions_watch')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, () => fetchTx())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, () => {
+        // Always use the ref so we re-fetch within the currently active date range
+        fetchTx(dateRangeRef.current.start, dateRangeRef.current.end);
+      })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const filtered = useMemo(() => {
     return transactions.filter((t) => {
       if (statusFilter !== 'all' && t.status !== statusFilter) return false;
       if (typeFilter !== 'all' && t.type !== typeFilter) return false;
-      if (startDate && t.created_at < startDate) return false;
-      if (endDate && t.created_at > endDate + 'T23:59:59') return false;
       return true;
     });
-  }, [transactions, statusFilter, typeFilter, startDate, endDate]);
+  }, [transactions, statusFilter, typeFilter]);
 
   // ── Approve deposit ────────────────────────────────────────────────────────
   async function handleApproveDeposit(row: TxRow) {
@@ -248,7 +285,7 @@ export default function FinancePage() {
       toast(`Approve failed: ${err?.message ?? err}`, 'error');
     } finally {
       setProcessingId(null);
-      fetchTx();
+      void fetchTx(startDate, endDate);
     }
   }
 
@@ -280,7 +317,7 @@ export default function FinancePage() {
       toast(`Reject failed: ${err?.message ?? err}`, 'error');
     } finally {
       setProcessingId(null);
-      fetchTx();
+      void fetchTx(startDate, endDate);
     }
   }
 
@@ -314,7 +351,7 @@ export default function FinancePage() {
       toast(`Approve failed: ${err?.message ?? err}`, 'error');
     } finally {
       setProcessingId(null);
-      fetchTx();
+      void fetchTx(startDate, endDate);
     }
   }
 
@@ -346,12 +383,14 @@ export default function FinancePage() {
       toast(`Reject failed: ${err?.message ?? err}`, 'error');
     } finally {
       setProcessingId(null);
-      fetchTx();
+      void fetchTx(startDate, endDate);
     }
   }
 
   const totalDeposits    = filtered.filter((t) => t.type === 'deposit'    && t.status === 'success').reduce((a, t) => a + t.amount, 0);
   const totalWithdrawals = filtered.filter((t) => t.type === 'withdrawal' && (t.status === 'success' || t.status === 'approved')).reduce((a, t) => a + t.amount, 0);
+  const adminCreditsPaid = filtered.filter((t) => t.type === 'admin_credit' && t.status === 'success').reduce((a, t) => a + t.amount, 0);
+  const adminDebitsTaken = filtered.filter((t) => t.type === 'admin_debit'  && t.status === 'success').reduce((a, t) => a + t.amount, 0);
   const pendingCount     = filtered.filter((t) => t.status === 'pending').length;
 
   const columns: Column<TxRow>[] = [
@@ -434,44 +473,85 @@ export default function FinancePage() {
   return (
     <div className="flex flex-col gap-6">
       {/* Summary stats */}
-      <div className="grid grid-cols-3 gap-4">
-        <StatCard title="Total Deposits"    value={`KES ${totalDeposits.toLocaleString()}`}    icon="💳" color="green"  />
-        <StatCard title="Total Withdrawals" value={`KES ${totalWithdrawals.toLocaleString()}`} icon="💸" color="red"    />
-        <StatCard title="Pending"           value={pendingCount}                                icon="⏳" color="yellow" />
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <StatCard title="Total Deposits"     value={`KES ${totalDeposits.toLocaleString()}`}     icon="💳" color="green"  subtitle="M-Pesa inflows only" />
+        <StatCard title="Total Withdrawals"  value={`KES ${totalWithdrawals.toLocaleString()}`}  icon="💸" color="red"    subtitle="M-Pesa outflows only" />
+        <StatCard title="Admin Credits Paid" value={`KES ${adminCreditsPaid.toLocaleString()}`}  icon="🎁" color="yellow" subtitle="Casino paid to players" />
+        <StatCard title="Admin Debits Taken" value={`KES ${adminDebitsTaken.toLocaleString()}`}  icon="↩️" color="cyan"  subtitle="Reclaimed from players" />
+        <StatCard title="Pending"            value={pendingCount}                                 icon="⏳" color="yellow" subtitle="Awaiting action" />
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3 items-end">
-        <div className="flex flex-col gap-1">
-          <label className="text-white/40 text-xs uppercase tracking-widest">From</label>
-          <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
-            className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#FFD700]/50" />
+      <div className="flex flex-col gap-3">
+        {/* Quick preset buttons */}
+        <div className="flex flex-wrap gap-2 items-center">
+          <span className="text-white/40 text-xs uppercase tracking-widest mr-1">Quick:</span>
+          {DATE_PRESETS.map((preset) => (
+            <button
+              key={preset.label}
+              onClick={() => applyPreset(preset)}
+              className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all border ${
+                activePreset === preset.label
+                  ? 'bg-[#FFD700]/20 border-[#FFD700]/60 text-[#FFD700]'
+                  : 'bg-white/5 border-white/10 text-white/60 hover:border-white/30 hover:text-white'
+              }`}
+            >
+              {preset.label}
+            </button>
+          ))}
         </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-white/40 text-xs uppercase tracking-widest">To</label>
-          <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
-            className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#FFD700]/50" />
+
+        {/* Manual date range + status/type filters */}
+        <div className="flex flex-wrap gap-3 items-end">
+          <div className="flex flex-col gap-1">
+            <label className="text-white/40 text-xs uppercase tracking-widest">From</label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => { setStartDate(e.target.value); setActivePreset(''); }}
+              className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#FFD700]/50"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-white/40 text-xs uppercase tracking-widest">To</label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => { setEndDate(e.target.value); setActivePreset(''); }}
+              className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#FFD700]/50"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-white/40 text-xs uppercase tracking-widest">Status</label>
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
+              className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 pr-8 text-sm text-white appearance-none focus:outline-none focus:border-[#FFD700] focus:ring-1 focus:ring-[#FFD700]">
+              {['all', 'pending', 'success', 'failed', 'approved', 'rejected'].map((s) =>
+                <option key={s} value={s} className="bg-slate-900">{s}</option>)}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-white/40 text-xs uppercase tracking-widest">Type</label>
+            <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}
+              className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 pr-8 text-sm text-white appearance-none focus:outline-none focus:border-[#FFD700] focus:ring-1 focus:ring-[#FFD700]">
+              {['all', 'deposit', 'withdrawal', 'admin_credit', 'admin_debit', 'bet', 'payout'].map((s) =>
+                <option key={s} value={s} className="bg-slate-900">{s}</option>)}
+            </select>
+          </div>
+          <button
+            onClick={() => {
+              setActivePreset('');
+              dateRangeRef.current = { start: startDate, end: endDate };
+              void fetchTx(startDate, endDate);
+            }}
+            className="px-4 py-2 rounded-lg bg-[#FFD700]/20 border border-[#FFD700]/40 hover:bg-[#FFD700]/30 text-[#FFD700] text-sm font-semibold transition-colors self-end"
+          >
+            Apply
+          </button>
+          <button onClick={() => downloadCSV(filtered)}
+            className="ml-auto px-4 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-white text-sm font-semibold transition-colors self-end">
+            Export CSV
+          </button>
         </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-white/40 text-xs uppercase tracking-widest">Status</label>
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
-            className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 pr-8 text-sm text-white appearance-none focus:outline-none focus:border-[#FFD700] focus:ring-1 focus:ring-[#FFD700]">
-            {['all', 'pending', 'success', 'failed', 'approved', 'rejected'].map((s) =>
-              <option key={s} value={s} className="bg-slate-900">{s}</option>)}
-          </select>
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-white/40 text-xs uppercase tracking-widest">Type</label>
-          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}
-            className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 pr-8 text-sm text-white appearance-none focus:outline-none focus:border-[#FFD700] focus:ring-1 focus:ring-[#FFD700]">
-            {['all', 'deposit', 'withdrawal', 'admin_credit', 'admin_debit', 'bet', 'payout'].map((s) =>
-              <option key={s} value={s} className="bg-slate-900">{s}</option>)}
-          </select>
-        </div>
-        <button onClick={() => downloadCSV(filtered)}
-          className="ml-auto px-4 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-white text-sm font-semibold transition-colors">
-          Export CSV
-        </button>
       </div>
 
       <DataTable<TxRow>

@@ -75,6 +75,7 @@ export default function LiveTablesPage() {
             {GAME_CATEGORIES.map((cat) => (
               <button
                 key={cat.id}
+                data-testid={`filter-${cat.id}`}
                 onClick={() => setActiveCategory(cat.id)}
                 className={`shrink-0 flex items-center gap-2 px-4 py-2 rounded-full font-orbitron text-xs tracking-widest transition-all duration-200 ${
                   activeCategory === cat.id

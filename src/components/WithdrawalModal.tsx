@@ -10,10 +10,9 @@ interface WithdrawalModalProps {
   onClose: () => void;
 }
 
-const MIN_WITHDRAWAL = 100;
-const MAX_WITHDRAWAL = 50_000;
-const DAILY_LIMIT    = 100_000;
-const COOLDOWN_HOURS = 1;
+const MIN_WITHDRAWAL = 50;       // KES 50 — matches M-Pesa minimum send
+const MAX_WITHDRAWAL = 70_000;   // KES 70,000 — below Safaricom B2C single limit
+const DAILY_LIMIT    = 150_000;  // KES 150,000 — 2× max single, meaningful cap
 
 type Step = 'form' | 'confirm' | 'success' | 'error';
 
@@ -35,7 +34,7 @@ function displayPhone(normalized: string): string {
 }
 
 export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProps) {
-  const { user, profile } = useAuthStore();
+  const { profile } = useAuthStore();
   const balance = useGameStore((s) => s.balance);
 
   const [amount, setAmount]         = useState('');
@@ -69,35 +68,7 @@ export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProp
     return null;
   }
 
-  async function checkDailyLimit(): Promise<string | null> {
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const { data } = await supabase
-      .from('transactions')
-      .select('amount')
-      .eq('user_id', user!.id)
-      .eq('type', 'withdrawal')
-      .neq('status', 'rejected')
-      .gte('created_at', today.toISOString());
-    const todayTotal = (data ?? []).reduce((s: number, r: { amount: number }) => s + r.amount, 0);
-    if (todayTotal + Number(amount) > DAILY_LIMIT)
-      return `Daily limit exceeded. You've withdrawn KES ${todayTotal.toLocaleString()} today (limit: KES ${DAILY_LIMIT.toLocaleString()})`;
-    return null;
-  }
-
-  async function checkCooldown(): Promise<string | null> {
-    const cooldownFrom = new Date(Date.now() - COOLDOWN_HOURS * 3_600_000).toISOString();
-    const { data } = await supabase
-      .from('transactions')
-      .select('id')
-      .eq('user_id', user!.id)
-      .eq('type', 'withdrawal')
-      .in('status', ['pending', 'approved', 'processing'])
-      .gte('created_at', cooldownFrom)
-      .limit(1);
-    if (data && data.length > 0)
-      return `You have a pending withdrawal. Please wait ${COOLDOWN_HOURS}h between requests.`;
-    return null;
-  }
+  // Daily limit and cooldown are enforced server-side in submit_withdrawal RPC
 
   async function handleSubmit() {
     const err = validateForm();
@@ -109,71 +80,39 @@ export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProp
   async function handleConfirm() {
     setLoading(true);
     try {
-      // ── 1. Server-side phone validation (SECURITY DEFINER — bypasses RLS) ──
-      const { data: validationResult, error: validationError } = await supabase.rpc(
-        'validate_withdrawal_phone',
-        {
-          p_user_id:    user!.id,
-          p_phone:      registeredPhone,   // always use stored phone — never client-supplied
-          p_amount:     Number(amount),
-          p_ip_address: null,
-          p_user_agent: navigator.userAgent,
-        }
+      // ── Single atomic RPC: validates, checks limits, inserts tx, deducts balance ──
+      // This replaces the previous split approach (separate INSERT + UPDATE)
+      // which had an atomicity gap — if one succeeded and the other failed,
+      // the player could get a free withdrawal or lose balance without a record.
+      const { data: result, error: rpcErr } = await supabase.rpc(
+        'submit_withdrawal',
+        { p_amount: Number(amount) }
       );
 
-      if (validationError) {
-        console.error('[withdrawal] validation RPC error:', validationError.message);
-        // RPC not deployed yet — allow but log
-      } else if (validationResult === 'phone_mismatch') {
-        setErrorMsg('Withdrawals are only allowed to your verified M-Pesa number.');
-        setStep('error');
-        setLoading(false);
-        return;
-      } else if (validationResult === 'no_phone_registered') {
-        setErrorMsg('No verified M-Pesa number on your account. Please update your profile first.');
+      if (rpcErr) {
+        // Server-side validation errors come back as PostgreSQL exceptions
+        const msg = rpcErr.message ?? 'Withdrawal failed. Please try again.';
+        setErrorMsg(msg.replace(/^.*EXCEPTION:\s*/i, '').replace(/^ERROR:\s*/i, ''));
         setStep('error');
         setLoading(false);
         return;
       }
 
-      // ── 2. Rate / daily limit checks ──────────────────────────────────────
-      const limitErr = await checkDailyLimit();
-      if (limitErr) { setErrorMsg(limitErr); setStep('form'); setLoading(false); return; }
-
-      const cooldownErr = await checkCooldown();
-      if (cooldownErr) { setErrorMsg(cooldownErr); setStep('form'); setLoading(false); return; }
-
-      const amt        = Number(amount);
-      const newBalance = Math.round((balance - amt) * 100) / 100;
-
-      // ── 3. Insert transaction record ──────────────────────────────────────
-      const { data: txn, error: txnErr } = await supabase
-        .from('transactions')
-        .insert({
-          user_id:    user!.id,
-          amount:     amt,
-          phone:      registeredPhone,   // always store the verified phone
-          type:       'withdrawal',
-          status:     'pending',
-        })
-        .select('id')
-        .single();
-
-      if (txnErr || !txn) {
-        setErrorMsg('Failed to submit withdrawal. Please try again.');
+      if (!result?.success) {
+        setErrorMsg('Withdrawal submission failed. Please try again.');
         setStep('error');
         setLoading(false);
         return;
       }
 
-      // ── 4. Deduct balance ─────────────────────────────────────────────────
-      await supabase.from('profiles').update({ balance: newBalance, updated_at: new Date().toISOString() }).eq('id', user!.id);
-      useGameStore.setState({ balance: newBalance });
+      // Update client state with server-confirmed new balance
+      const serverBalance = result.new_balance ?? Math.round((balance - Number(amount)) * 100) / 100;
+      useGameStore.setState({ balance: serverBalance });
       useAuthStore.setState((s) => ({
-        profile: s.profile ? { ...s.profile, balance: newBalance } : null,
+        profile: s.profile ? { ...s.profile, balance: serverBalance } : null,
       }));
 
-      setWithdrawalId(txn.id.slice(0, 8).toUpperCase());
+      setWithdrawalId((result.transaction_id as string ?? '').slice(0, 8).toUpperCase());
       setStep('success');
     } catch {
       setErrorMsg('Unexpected error. Please try again.');
@@ -227,13 +166,25 @@ export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProp
               {/* Limits */}
               <div className="grid grid-cols-3 gap-2 text-center">
                 {[
-                  { label: 'Min',   value: `KES ${MIN_WITHDRAWAL.toLocaleString()}` },
-                  { label: 'Max',   value: `KES ${(MAX_WITHDRAWAL / 1000).toFixed(0)}K` },
-                  { label: 'Daily', value: `KES ${(DAILY_LIMIT / 1000).toFixed(0)}K` },
+                  { label: 'Min',   value: `KES ${MIN_WITHDRAWAL.toLocaleString()}`,            color: '#00ffcc' },
+                  { label: 'Max',   value: `KES ${(MAX_WITHDRAWAL / 1000).toFixed(0)}K`,        color: '#ff6b6b' },
+                  { label: 'Daily', value: `KES ${(DAILY_LIMIT   / 1000).toFixed(0)}K`,         color: '#FFD700' },
                 ].map((item) => (
-                  <div key={item.label} className="rounded-lg px-2 py-2" style={{ background: 'rgba(255,255,255,0.04)' }}>
-                    <p className="text-white/30 text-[10px] font-orbitron">{item.label}</p>
-                    <p className="text-white text-xs font-orbitron font-bold">{item.value}</p>
+                  <div
+                    key={item.label}
+                    className="rounded-xl px-2 py-2.5 flex flex-col items-center gap-0.5"
+                    style={{
+                      background: `${item.color}08`,
+                      border:     `1px solid ${item.color}22`,
+                    }}
+                  >
+                    <p className="text-white/40 text-[9px] font-orbitron tracking-widest uppercase">{item.label}</p>
+                    <p
+                      className="text-xs font-orbitron font-bold"
+                      style={{ color: item.color, textShadow: `0 0 8px ${item.color}60` }}
+                    >
+                      {item.value}
+                    </p>
                   </div>
                 ))}
               </div>
@@ -296,15 +247,21 @@ export default function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProp
                   <div className="flex flex-col gap-1.5">
                     <label className="font-orbitron text-xs text-white/50 tracking-widest uppercase">Amount (KES)</label>
                     <input
-                      type="number"
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
                       value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
+                      onChange={(e) => {
+                        // Strip anything that isn't a digit or single decimal point
+                        const val = e.target.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1');
+                        setAmount(val);
+                      }}
                       placeholder={`Min KES ${MIN_WITHDRAWAL}`}
                       disabled={!hasVerifiedPhone}
                       className="rounded-xl px-4 py-4 text-sm text-white placeholder-gray-600 outline-none bg-white/5 border border-white/10 focus:border-red-400/60 disabled:opacity-40 disabled:cursor-not-allowed"
                     />
                     <div className="flex gap-2">
-                      {[500, 1000, 5000, 10000].map((v) => (
+                      {[1_000, 5_000, 10_000, 20_000].map((v) => (
                         <button
                           key={v}
                           type="button"

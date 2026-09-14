@@ -214,6 +214,7 @@ export default function Navbar({ activeTab, compact }: NavbarProps) {
           {/* Balance — always visible */}
           {user && (
             <span
+              data-testid="navbar-balance"
               className="font-orbitron font-bold text-neon-yellow whitespace-nowrap"
               style={{ fontSize: 'clamp(9px, 2.2vw, 12px)', textShadow: '0 0 8px rgba(255,215,0,0.4)' }}
             >

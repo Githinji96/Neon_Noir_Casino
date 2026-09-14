@@ -63,9 +63,9 @@ const columns: Column<UserRow>[] = [
 
 export default function UsersPage() {
   const navigate = useNavigate();
-  const [users, setUsers]   = useState<UserRow[]>([]);
+  const [users,   setUsers]   = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError]   = useState<string | null>(null);
+  const [error,   setError]   = useState<string | null>(null);
 
   async function fetchUsers() {
     setError(null);

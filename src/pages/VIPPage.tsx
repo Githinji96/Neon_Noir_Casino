@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, Link } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import BottomNav from '../components/BottomNav';
 import WeeklyCashbackCard from '../components/WeeklyCashbackCard';
@@ -17,10 +17,17 @@ interface LeaderboardEntry {
 }
 
 export default function VIPPage() {
-  const navigate = useNavigate();
-  const { user } = useAuthStore();
+  const { user, loading: authLoading } = useAuthStore();
   const { totalPoints, monthlyPoints, currentTier, loadVIP } = useVIPStore();
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  // Safety net: if auth loading takes > 4s, treat as unauthenticated (same as ProtectedRoute)
+  const [authTimedOut, setAuthTimedOut] = useState(false);
+
+  useEffect(() => {
+    if (!authLoading) return;
+    const t = setTimeout(() => setAuthTimedOut(true), 4_000);
+    return () => clearTimeout(t);
+  }, [authLoading]);
 
   const nextTier = getNextTier(currentTier.level);
   const progressPct = nextTier
@@ -28,8 +35,9 @@ export default function VIPPage() {
     : 100;
 
   useEffect(() => {
+    if (authLoading || !user) return;
     window.scrollTo({ top: 0, behavior: 'smooth' });
-    if (user?.id) loadVIP(user.id);
+    loadVIP(user.id);
 
     // Load leaderboard
     supabase
@@ -52,12 +60,26 @@ export default function VIPPage() {
           total_points: r.total_points,
         })));
       });
-  }, [user?.id]);
+  }, [user?.id, authLoading]);
 
   const tierColors: Record<string, string> = {
     bronze: '#CD7F32', silver: '#C0C0C0', gold: '#FFD700',
     platinum: '#E5E4E2', diamond: '#B9F2FF',
   };
+
+  // Still initializing auth — show spinner, not content or footer
+  if (authLoading && !authTimedOut) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="w-10 h-10 rounded-full border-4 border-yellow-400 border-t-transparent animate-spin" />
+      </div>
+    );
+  }
+
+  // Confirmed signed out — redirect immediately (synchronous, no flicker)
+  if (!user) {
+    return <Navigate to="/auth/login" replace state={{ from: { pathname: '/vip' } }} />;
+  }
 
   return (
     <div className="relative bg-black min-h-screen">
@@ -235,11 +257,11 @@ export default function VIPPage() {
         {!user && (
           <div className="text-center py-12">
             <p className="text-white/40 font-orbitron mb-4">Sign in to track your VIP progress</p>
-            <button onClick={() => navigate('/auth/login')}
-              className="px-8 py-3 rounded-xl font-orbitron text-sm font-bold text-black"
+            <Link to="/auth/login"
+              className="px-8 py-3 rounded-xl font-orbitron text-sm font-bold text-black inline-block"
               style={{ background: 'linear-gradient(135deg, #FFD700, #FFA500)' }}>
               SIGN IN
-            </button>
+            </Link>
           </div>
         )}
       </main>

@@ -13,7 +13,7 @@ const CASINO_LINKS = [
   { label: 'Live Tables',           path: '/live-tables' },
   { label: 'Progressive Jackpots',  path: '/jackpots' },
   { label: 'VIP Club',              path: '/vip' },
-  { label: 'Leaderboard',           path: '/' },
+  { label: 'Leaderboard',           path: '/vip' },  // VIP page has the leaderboard section
 ];
 
 const ACCOUNT_LINKS = [
@@ -21,7 +21,7 @@ const ACCOUNT_LINKS = [
   { label: 'Register',              path: '/auth/signup' },
   { label: 'Deposit',               path: '/', action: 'deposit' },
   { label: 'Withdraw',              path: '/', action: 'withdraw' },
-  { label: 'Responsible Gambling',  path: '/' },
+  { label: 'Responsible Gambling',  path: '/contact' },
 ];
 
 const SUPPORT_LINKS = [
@@ -44,10 +44,10 @@ const SOCIAL = [
 ];
 
 const BOTTOM_LINKS = [
-  { label: 'Cookies Policy', path: '/' },
+  { label: 'Cookies Policy', path: '/terms' },         // covered under Terms & Conditions
   { label: 'Privacy',        path: '/privacy-policy' },
   { label: 'Terms',          path: '/terms' },
-  { label: 'Sitemap',        path: '/' },
+  { label: 'Sitemap',        path: '/contact' },        // no sitemap page — contact is closest
 ];
 
 // ─── Sub-components ───────────────────────────────────────────────────────────

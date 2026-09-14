@@ -14,6 +14,14 @@ export default function AdminLoginPage() {
   const [error, setError] = useState('');
   const isTimeout = params.get('reason') === 'timeout';
 
+  // Clear any browser-autofilled values on mount so previous credentials
+  // don't persist after logout. A short delay is needed because some browsers
+  // inject autofill after the initial render.
+  useEffect(() => {
+    const t = setTimeout(() => { setEmail(''); setPassword(''); }, 50);
+    return () => clearTimeout(t);
+  }, []);
+
   useEffect(() => {
     let active = true;
 
@@ -41,7 +49,13 @@ export default function AdminLoginPage() {
         if (role && profile) {
           const safeProfile = profile;
           useAdminStore.setState({ adminProfile: { id: safeProfile.id, username: safeProfile.username, admin_role: role }, loading: false });
-          if (active) navigate('/admin/dashboard', { replace: true });
+          const landingPage: Record<string, string> = {
+            super_admin:   '/admin/dashboard',
+            finance_admin: '/admin/dashboard',
+            support_agent: '/admin/users',
+            game_manager:  '/admin/games',
+          };
+          if (active) navigate(landingPage[role] ?? '/admin/dashboard', { replace: true });
           return;
         }
 
@@ -111,7 +125,15 @@ export default function AdminLoginPage() {
       });
       // Start the server-side session (authoritative expiry)
       await useAdminStore.getState().startSession();
-      navigate('/admin/dashboard');
+
+      // Route each role to their primary landing page
+      const landingPage: Record<string, string> = {
+        super_admin:   '/admin/dashboard',
+        finance_admin: '/admin/dashboard',
+        support_agent: '/admin/users',
+        game_manager:  '/admin/games',
+      };
+      navigate(landingPage[role] ?? '/admin/dashboard');
     } catch (err) {
       setError(getAuthErrorMessage(err));
       setLoading(false);
@@ -137,7 +159,7 @@ export default function AdminLoginPage() {
             <div className="w-5 h-5 rounded-full border-2 border-[#FFD700] border-t-transparent animate-spin" />
           </div>
         ) : (
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4" autoComplete="off">
           <div className="flex flex-col gap-1.5">
             <label className="text-white/50 text-xs uppercase tracking-widest">Email</label>
             <input
@@ -145,6 +167,7 @@ export default function AdminLoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
+              autoComplete="off"
               className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/20 focus:outline-none focus:border-[#FFD700]/50 transition-colors text-sm"
               placeholder="admin@example.com"
             />
@@ -157,6 +180,7 @@ export default function AdminLoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              autoComplete="new-password"
               className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/20 focus:outline-none focus:border-[#FFD700]/50 transition-colors text-sm"
               placeholder="••••••••"
             />

@@ -59,6 +59,20 @@ export default function GameCanvas({ gameId, animationSpeed = 'normal', onSpinCo
   const winResults = useGameStore((s) => s.winResults);
   const turboMode  = useGameStore((s) => s.turboMode);
 
+  // Keep a ref to turboMode so the stop-timer effect (dep: [isSpinning])
+  // always reads the current value — never a stale closure capture.
+  const turboRef = useRef(turboMode);
+  useEffect(() => { turboRef.current = turboMode; }, [turboMode]);
+
+  // Same for animationSpeed — it comes from settingsStore via a parent prop.
+  const animationSpeedRef = useRef(animationSpeed);
+  useEffect(() => { animationSpeedRef.current = animationSpeed; }, [animationSpeed]);
+
+  // Keep a stable ref to onSpinComplete so timer callbacks always call the
+  // latest version even though the effect dep array only lists [isSpinning].
+  const onSpinCompleteRef = useRef(onSpinComplete);
+  useEffect(() => { onSpinCompleteRef.current = onSpinComplete; }, [onSpinComplete]);
+
   const outerRef  = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [cellSize, setCellSize] = useState(60);
@@ -99,8 +113,15 @@ export default function GameCanvas({ gameId, animationSpeed = 'normal', onSpinCo
       stopTimers.current.forEach(clearTimeout);
       stopTimers.current = [];
 
-      const stopBase = turboMode ? 280  : 1100;
-      const stopGap  = turboMode ? 100  : 260;
+      // stopBase = when col 0 stops, stopGap = stagger between each column
+      // turbo:  280ms base, 80ms gap  → last col at 280 + 4×80  = 600ms
+      // fast:   700ms base, 150ms gap → last col at 700 + 4×150 = 1300ms
+      // normal: 1200ms base, 220ms gap→ last col at 1200 + 4×220 = 2080ms
+      // slow:   1800ms base, 300ms gap→ last col at 1800 + 4×300 = 3000ms
+      const turbo = turboRef.current;
+      const speed = animationSpeedRef.current;
+      const stopBase = turbo ? 280  : speed === 'fast' ? 700  : speed === 'slow' ? 1800 : 1200;
+      const stopGap  = turbo ? 80   : speed === 'fast' ? 150  : speed === 'slow' ? 300  : 220;
 
       let stoppedCount = 0;
       for (let c = 0; c < COLS; c++) {
@@ -116,7 +137,7 @@ export default function GameCanvas({ gameId, animationSpeed = 'normal', onSpinCo
             return next;
           });
           stoppedCount++;
-          if (stoppedCount === COLS) onSpinComplete?.();
+          if (stoppedCount === COLS) onSpinCompleteRef.current?.();
         }, stopBase + c * stopGap);
         stopTimers.current.push(t);
       }
@@ -207,11 +228,18 @@ function ReelColumn({ gameId, symbols, spinning, turbo, animationSpeed, winRows,
   const visH = ROWS * cellSize + (ROWS - 1) * rowGap;
   const step = -(cellSize + rowGap);
 
-  // Reel strip animation duration controlled by animationSpeed (turbo overrides)
-  const spinDur = turbo ? '0.12s'
-    : animationSpeed === 'slow' ? '0.28s'
-    : animationSpeed === 'fast' ? '0.10s'
-    : '0.18s';
+  // Reel strip animation duration — lower = faster visual spin
+  // turbo: 0.08s (blur-fast), fast: 0.16s, normal: 0.40s, slow: 0.65s
+  const spinDur = turbo ? '0.08s'
+    : animationSpeed === 'fast'  ? '0.16s'
+    : animationSpeed === 'slow'  ? '0.65s'
+    : '0.40s';
+
+  // animKey forces the browser to restart the CSS animation from scratch
+  // whenever the speed mode changes. Without this, browsers keep running
+  // the old animation-duration even after the prop updates.
+  const animName = spinning ? `reelSpin${turbo ? 'Fast' : ''}` : '';
+  const animKey  = `${animName}-${spinDur}`;
 
   return (
     <div style={{
@@ -222,16 +250,20 @@ function ReelColumn({ gameId, symbols, spinning, turbo, animationSpeed, winRows,
       position: 'relative',
       ['--reel-step' as string]: `${step}px`,
     }}>
-      {/* Spinning strip */}
-      <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: rowGap,
-        animation: spinning
-          ? `reelSpin${turbo ? 'Fast' : ''} ${spinDur} linear infinite`
-          : undefined,
-        willChange: spinning ? 'transform' : undefined,
-      }}>
+      {/* Spinning strip — keyed by animKey so the browser restarts the CSS
+          animation cleanly whenever turbo or speed mode changes. */}
+      <div
+        key={animKey}
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: rowGap,
+          animation: spinning
+            ? `${animName} ${spinDur} linear infinite`
+            : undefined,
+          willChange: spinning ? 'transform' : undefined,
+        }}
+      >
         {/* Extra symbols above for seamless loop visual */}
         {spinning && symbols.map((sym, r) => (
           <SymbolCell key={`above-${r}`} gameId={gameId} symbolId={sym}

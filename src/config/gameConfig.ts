@@ -25,12 +25,13 @@ export const GAME_CONFIG = {
  * e.g. cyber-strike-777: 0.965 - 0.02 = 0.945
  */
 export const GAME_BASE_RTP: Record<string, number> = {
-  'cyber-strike-777':   0.945,  // 96.5% effective − 2% jackpot contribution
-  'electric-storm':     0.955,  // 96.5% effective − 1% jackpot contribution
-  'quantum-vault':      0.950,  // 96.5% effective − 1.5% jackpot contribution
-  'dark-matter-reels':  0.960,  // 96.5% effective − 0.5% jackpot contribution
-  'neon-samurai':       0.960,  // 96.5% effective − 0.5% jackpot contribution
-  'neon-jungle-fruits': 0.965,  // no jackpot — full RTP in base game
+  'mega-moolah-noir':   0.945,  // 96.5% effective − 2% jackpot contribution (mega jackpot)
+  'cyber-strike-777':   0.965,  // normal slot — full RTP in base game
+  'electric-storm':     0.955,
+  'quantum-vault':      0.950,
+  'dark-matter-reels':  0.960,
+  'neon-samurai':       0.960,
+  'neon-jungle-fruits': 0.965,
 };
 
 export function getBaseRTPForGame(gameId: string): number {

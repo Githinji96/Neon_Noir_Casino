@@ -35,36 +35,54 @@ export default function NewArrivalsSection({ onGameClick, onSeeAll }: NewArrival
         </button>
       </div>
 
-      {/* Mobile: 2-col grid | Desktop: horizontal scroll */}
+      {/*
+       * Responsive grid:
+       *  mobile  (<480px) → 2 cols
+       *  ≥480px           → 3 cols
+       *  ≥768px           → 4 cols
+       *  ≥1024px          → 6 cols  ← all 6 fill the row with no gap on right
+       */}
+      <style>{`
+        .na-grid {
+          display: grid;
+          gap: 10px;
+          width: 100%;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        @media (min-width: 480px)  { .na-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+        @media (min-width: 768px)  { .na-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+        @media (min-width: 1024px) { .na-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+      `}</style>
+
       {loading ? (
-        <div className="grid grid-cols-2 sm:hidden gap-3">
-          {[0, 1].map((i) => (
-            <div key={i} className="relative rounded-xl overflow-hidden bg-white/5 aspect-video">
-              <motion.div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent"
-                animate={{ x: ['-100%', '100%'] }} transition={{ duration: 1.2, repeat: Infinity, ease: 'linear' }} />
+        <div className="na-grid">
+          {NEW_ARRIVAL_GAMES.map((_, i) => (
+            <div
+              key={i}
+              className="relative rounded-xl overflow-hidden bg-white/5"
+              style={{ height: 110 }}
+            >
+              <motion.div
+                className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent"
+                animate={{ x: ['-100%', '100%'] }}
+                transition={{ duration: 1.2, repeat: Infinity, ease: 'linear' }}
+              />
             </div>
           ))}
         </div>
       ) : (
-        <>
-          {/* Mobile 2-column grid */}
-          <div className="grid grid-cols-2 sm:hidden gap-3">
-            {NEW_ARRIVAL_GAMES.map((game) => (
-              <GameCard key={game.id} id={game.id} title={game.title} thumbnail={game.thumbnail}
-                badge={game.badge} onClick={() => onGameClick(game.id, game.title)} />
-            ))}
-          </div>
-
-          {/* Tablet/Desktop horizontal scroll */}
-          <div className="hidden sm:flex gap-3 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
-            {NEW_ARRIVAL_GAMES.map((game) => (
-              <div key={game.id} className="shrink-0" style={{ width: 'min(200px, 70vw)' }}>
-                <GameCard id={game.id} title={game.title} thumbnail={game.thumbnail}
-                  badge={game.badge} onClick={() => onGameClick(game.id, game.title)} />
-              </div>
-            ))}
-          </div>
-        </>
+        <div className="na-grid">
+          {NEW_ARRIVAL_GAMES.map((game) => (
+            <GameCard
+              key={game.id}
+              id={game.id}
+              title={game.title}
+              thumbnail={game.thumbnail}
+              badge={game.badge}
+              onClick={() => onGameClick(game.id, game.title)}
+            />
+          ))}
+        </div>
       )}
     </section>
   );

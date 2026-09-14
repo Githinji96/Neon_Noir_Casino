@@ -15,6 +15,7 @@ const typeIcon: Record<AdminAlert['type'], string> = {
   rtp_deviation: '⚠️',
   large_payout: '💰',
   fraud_flag: '🚨',
+  jackpot_win: '🎰',
 };
 
 function relativeTime(iso: string): string {

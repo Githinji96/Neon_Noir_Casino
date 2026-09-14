@@ -219,9 +219,14 @@ export default function DepositModal({ isOpen, onClose, onPolling }: DepositModa
                   Amount (KES)
                 </label>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   value={amount}
-                  onChange={(e) => handleAmountChange(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1');
+                    handleAmountChange(val);
+                  }}
                   placeholder="Min. KES 10"
                   disabled={isLoading || !hasPhone}
                   className={`w-full rounded-xl px-5 py-4 text-base text-white placeholder-gray-600 outline-none transition-all bg-white/5 border focus:border-yellow-400/60 disabled:opacity-50 ${

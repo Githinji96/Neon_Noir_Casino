@@ -40,6 +40,7 @@ const AuditPage           = lazy(() => import('./pages/admin/AuditPage'));
 const WithdrawalsPage     = lazy(() => import('./pages/admin/WithdrawalsPage'));
 const SupportTicketsPage  = lazy(() => import('./pages/admin/SupportTicketsPage'));
 const CasinoFinancialPage = lazy(() => import('./pages/admin/CasinoFinancialPage'));
+const BetHistoryPage      = lazy(() => import('./pages/admin/BetHistoryPage'));
 
 const AdminFallback = () => (
   <div className="min-h-screen bg-gray-950 flex items-center justify-center">
@@ -52,10 +53,17 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
   static getDerivedStateFromError(error: Error) { return { error }; }
   render() {
     if (this.state.error) {
+      // Never expose stack traces or internal error messages in production
+      const isDev = import.meta.env.DEV;
       return (
         <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center gap-4 px-6 text-center">
           <p className="font-orbitron text-red-400 text-lg tracking-widest">SOMETHING WENT WRONG</p>
-          <p className="text-gray-500 text-sm font-mono">{(this.state.error as Error).message}</p>
+          {isDev && (
+            <p className="text-gray-500 text-sm font-mono">{(this.state.error as Error).message}</p>
+          )}
+          {!isDev && (
+            <p className="text-gray-500 text-sm">An unexpected error occurred. Please refresh the page.</p>
+          )}
           <button
             onClick={() => window.location.reload()}
             className="mt-4 px-6 py-2 rounded-full font-orbitron text-xs tracking-widest border border-yellow-300 text-yellow-300 hover:bg-yellow-300/10 transition-colors"
@@ -169,9 +177,13 @@ function AppRoutes() {
         <AdminAuthGuard requiredRoles={['super_admin','finance_admin','support_agent','game_manager']} />
       }>
         <Route element={<Suspense fallback={<AdminFallback />}><AdminLayout /></Suspense>}>
-          {/* Dashboard — super_admin, finance_admin */}
-          <Route element={<AdminAuthGuard requiredRoles={['super_admin','finance_admin']} />}>
+          {/* Dashboard — all admin roles can view the dashboard */}
+          <Route element={<AdminAuthGuard requiredRoles={['super_admin','finance_admin','support_agent','game_manager']} />}>
             <Route path="/admin/dashboard" element={<Suspense fallback={<AdminFallback />}><DashboardPage /></Suspense>} />
+          </Route>
+
+          {/* Analytics — super_admin, finance_admin, game_manager */}
+          <Route element={<AdminAuthGuard requiredRoles={['super_admin','finance_admin','game_manager']} />}>
             <Route path="/admin/analytics" element={<Suspense fallback={<AdminFallback />}><AnalyticsPage /></Suspense>} />
           </Route>
 
@@ -179,6 +191,7 @@ function AppRoutes() {
           <Route element={<AdminAuthGuard requiredRoles={['super_admin','support_agent']} />}>
             <Route path="/admin/users" element={<Suspense fallback={<AdminFallback />}><UsersPage /></Suspense>} />
             <Route path="/admin/users/:userId" element={<Suspense fallback={<AdminFallback />}><UserDetailPage /></Suspense>} />
+            <Route path="/admin/users/:userId/bet-history" element={<Suspense fallback={<AdminFallback />}><BetHistoryPage /></Suspense>} />
           </Route>
 
           {/* Finance — super_admin, finance_admin */}
@@ -196,8 +209,8 @@ function AppRoutes() {
             <Route path="/admin/live-tables" element={<Suspense fallback={<AdminFallback />}><LiveTablesAdminPage /></Suspense>} />
           </Route>
 
-          {/* Fraud + Audit — super_admin only */}
-          <Route element={<AdminAuthGuard requiredRoles={['super_admin']} />}>
+          {/* Fraud + Audit — super_admin + support_agent */}
+          <Route element={<AdminAuthGuard requiredRoles={['super_admin', 'support_agent']} />}>
             <Route path="/admin/fraud" element={<Suspense fallback={<AdminFallback />}><FraudPage /></Suspense>} />
             <Route path="/admin/audit" element={<Suspense fallback={<AdminFallback />}><AuditPage /></Suspense>} />
           </Route>

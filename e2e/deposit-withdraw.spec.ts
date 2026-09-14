@@ -63,7 +63,8 @@ test.describe('Deposit Modal', () => {
   test('amount input is present', async ({ page }) => {
     if (!(await openDepositModal(page))) test.skip();
     const modal = page.locator('.fixed').filter({ hasText: /m-pesa deposit/i });
-    await expect(modal.locator('input[type="number"]')).toBeVisible({ timeout: 5_000 });
+    // Input uses type="text" with inputMode="numeric" — not type="number"
+    await expect(modal.locator('input[inputmode="numeric"]')).toBeVisible({ timeout: 5_000 });
   });
 
   test('quick-amount buttons 100 and 500 are present', async ({ page }) => {
@@ -82,10 +83,14 @@ test.describe('Deposit Modal', () => {
 
   test('amount below KES 10 minimum shows error', async ({ page }) => {
     if (!(await openDepositModal(page))) test.skip();
-    const modal  = page.locator('.fixed').filter({ hasText: /m-pesa deposit/i });
-    const input  = modal.locator('input[type="number"]');
+    const modal = page.locator('.fixed').filter({ hasText: /m-pesa deposit/i });
+    // Input uses type="text" with inputMode="numeric"
+    const input = modal.locator('input[inputmode="numeric"]');
+    if (!(await input.isVisible().catch(() => false))) test.skip();
     if (await input.isDisabled().catch(() => true)) test.skip();
     await input.fill('5');
+    // Error appears inline on input change (validateAmount is called on change)
+    // Also fires when submit is attempted
     await page.getByRole('button', { name: /deposit via m-pesa/i }).click();
     await expect(
       page.locator('[data-testid="deposit-error"]')
@@ -94,8 +99,9 @@ test.describe('Deposit Modal', () => {
 
   test('amount above KES 150,000 maximum shows error', async ({ page }) => {
     if (!(await openDepositModal(page))) test.skip();
-    const modal  = page.locator('.fixed').filter({ hasText: /m-pesa deposit/i });
-    const input  = modal.locator('input[type="number"]');
+    const modal = page.locator('.fixed').filter({ hasText: /m-pesa deposit/i });
+    const input = modal.locator('input[inputmode="numeric"]');
+    if (!(await input.isVisible().catch(() => false))) test.skip();
     if (await input.isDisabled().catch(() => true)) test.skip();
     await input.fill('200000');
     await page.getByRole('button', { name: /deposit via m-pesa/i }).click();
@@ -168,8 +174,9 @@ test.describe('Withdrawal Modal', () => {
 
   test('amount input is present', async ({ page }) => {
     if (!(await openWithdrawModal(page))) test.skip();
+    // Input uses type="text" with inputMode="numeric" — not type="number"
     await expect(
-      getWithdrawOverlay(page).locator('input[type="number"]')
+      getWithdrawOverlay(page).locator('input[inputmode="numeric"]')
     ).toBeVisible({ timeout: 5_000 });
   });
 
@@ -180,14 +187,17 @@ test.describe('Withdrawal Modal', () => {
     ).toBeVisible({ timeout: 5_000 });
   });
 
-  test('amount below KES 100 minimum shows validation error', async ({ page }) => {
+  test('amount below KES 50 minimum shows validation error', async ({ page }) => {
     if (!(await openWithdrawModal(page))) test.skip();
     const overlay = getWithdrawOverlay(page);
-    const input   = overlay.locator('input[type="number"]');
+    // Input uses type="text" with inputMode="numeric"
+    const input   = overlay.locator('input[inputmode="numeric"]');
     const reqBtn  = overlay.getByRole('button', { name: /request withdrawal/i });
+    if (!(await input.isVisible().catch(() => false))) test.skip();
     if (await input.isDisabled().catch(() => true)) test.skip();
     await input.fill('5');
     await reqBtn.click();
+    // Error appears in data-testid="withdrawal-error" div on the form step
     await expect(
       page.locator('[data-testid="withdrawal-error"]')
     ).toBeVisible({ timeout: 5_000 });

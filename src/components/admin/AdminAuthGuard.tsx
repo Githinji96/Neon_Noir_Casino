@@ -8,8 +8,16 @@ interface AdminAuthGuardProps {
 }
 
 /** How often (ms) the frontend polls the server to validate the session */
-const POLL_INTERVAL_MS = 5 * 60_000; // 5 minutes — reduced to ease DB load
+const POLL_INTERVAL_MS = 5 * 60_000; // 5 minutes
 
+/** Inactivity timeout — log out after 30 min of no user interaction */
+const INACTIVITY_TIMEOUT_MS = 30 * 60_000; // 30 minutes
+
+/** Show inactivity warning 2 minutes before logout */
+const INACTIVITY_WARN_MS = 2 * 60_000; // 2 minutes before
+
+/** User activity events that reset the inactivity timer */
+const ACTIVITY_EVENTS = ['mousedown', 'mousemove', 'keydown', 'touchstart', 'scroll', 'click'] as const;
 
 export default function AdminAuthGuard({ requiredRoles }: AdminAuthGuardProps) {
   const { adminProfile, loading, init, checkSession, refreshSession, signOut } = useAdminStore();
@@ -19,8 +27,14 @@ export default function AdminAuthGuard({ requiredRoles }: AdminAuthGuardProps) {
   const [sessionStatus, setSessionStatus] = useState<'valid' | 'expiring' | 'expired' | null>(null);
   const [countdown, setCountdown] = useState(0);
   const [extending, setExtending] = useState(false);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [inactivityWarning, setInactivityWarning] = useState(false);
+  const [inactivityCountdown, setInactivityCountdown] = useState(0);
+  const pollRef           = useRef<ReturnType<typeof setInterval> | null>(null);
+  const countdownRef      = useRef<ReturnType<typeof setInterval> | null>(null);
+  const inactivityRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inactivityWarnRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inactivityTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastActivityRef   = useRef<number>(Date.now());
 
   // Always revalidate on mount
   useEffect(() => {
@@ -38,6 +52,61 @@ export default function AdminAuthGuard({ requiredRoles }: AdminAuthGuardProps) {
     void signOut(); // fire-and-forget cleanup
     navigate(`/admin/login?reason=${reason}`, { replace: true });
   }, [signOut, navigate]);
+
+  // ── Inactivity detection ──────────────────────────────────────────────────
+  const clearInactivityTimers = useCallback(() => {
+    if (inactivityRef.current)     clearTimeout(inactivityRef.current);
+    if (inactivityWarnRef.current) clearTimeout(inactivityWarnRef.current);
+    if (inactivityTickRef.current) clearInterval(inactivityTickRef.current);
+    inactivityRef.current     = null;
+    inactivityWarnRef.current = null;
+    inactivityTickRef.current = null;
+  }, []);
+
+  const scheduleInactivityLogout = useCallback(() => {
+    clearInactivityTimers();
+    setInactivityWarning(false);
+
+    // Show warning 2 min before logout
+    inactivityWarnRef.current = setTimeout(() => {
+      setInactivityWarning(true);
+      setInactivityCountdown(Math.round(INACTIVITY_WARN_MS / 1000));
+      // Tick the countdown
+      inactivityTickRef.current = setInterval(() => {
+        setInactivityCountdown((c) => {
+          if (c <= 1) {
+            if (inactivityTickRef.current) clearInterval(inactivityTickRef.current);
+            return 0;
+          }
+          return c - 1;
+        });
+      }, 1000);
+    }, INACTIVITY_TIMEOUT_MS - INACTIVITY_WARN_MS);
+
+    // Actual logout
+    inactivityRef.current = setTimeout(() => {
+      handleExpired('inactivity');
+    }, INACTIVITY_TIMEOUT_MS);
+  }, [clearInactivityTimers, handleExpired]);
+
+  // Register activity listeners when logged in
+  useEffect(() => {
+    if (!adminProfile) return;
+
+    const onActivity = () => {
+      lastActivityRef.current = Date.now();
+      setInactivityWarning(false);
+      scheduleInactivityLogout();
+    };
+
+    ACTIVITY_EVENTS.forEach((evt) => document.addEventListener(evt, onActivity, { passive: true }));
+    scheduleInactivityLogout(); // start the timer immediately on mount
+
+    return () => {
+      ACTIVITY_EVENTS.forEach((evt) => document.removeEventListener(evt, onActivity));
+      clearInactivityTimers();
+    };
+  }, [adminProfile, scheduleInactivityLogout, clearInactivityTimers]);
 
   // Session polling — server-authoritative check every 60s
   useEffect(() => {
@@ -117,6 +186,42 @@ export default function AdminAuthGuard({ requiredRoles }: AdminAuthGuardProps) {
 
   return (
     <>
+      {/* ── Inactivity warning banner ── */}
+      {inactivityWarning && inactivityCountdown > 0 && (
+        <div
+          className="fixed top-0 left-0 right-0 z-[9999] flex items-center justify-between gap-4 px-5 py-3"
+          style={{
+            background: 'linear-gradient(90deg, rgba(239,68,68,0.15), rgba(239,68,68,0.08))',
+            borderBottom: '1px solid rgba(239,68,68,0.4)',
+            backdropFilter: 'blur(8px)',
+          }}
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="text-red-400 text-lg shrink-0">⏱️</span>
+            <div className="min-w-0">
+              <p className="font-orbitron text-xs text-red-400 font-bold tracking-widest uppercase">
+                Session Inactive
+              </p>
+              <p className="text-red-400/70 text-xs font-mono mt-0.5">
+                Auto-logout in{' '}
+                <span className="text-red-400 font-bold tabular-nums">{formatCountdown(inactivityCountdown)}</span>
+                {' '}— move your mouse or press a key to stay logged in
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              setInactivityWarning(false);
+              scheduleInactivityLogout();
+            }}
+            className="shrink-0 px-4 py-1.5 rounded-lg font-orbitron text-xs font-bold text-white transition-all"
+            style={{ background: 'linear-gradient(135deg, #ef4444, #b91c1c)' }}
+          >
+            STAY LOGGED IN
+          </button>
+        </div>
+      )}
+
       {/* ── Session expiry warning banner ── */}
       {sessionStatus === 'expiring' && countdown > 0 && (
         <div

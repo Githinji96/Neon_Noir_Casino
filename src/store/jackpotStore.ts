@@ -109,6 +109,23 @@ export const useJackpotStore = create<JackpotState>((set) => ({
           .eq('id', result.win!.userId)
           .single();
         winnerUsername = profile?.username ?? null;
+
+        // Fire admin alert so the dashboard shows the jackpot win in Active Alerts
+        const amountFmt = `KES ${Math.round(result.win!.amount).toLocaleString()}`;
+        const playerLabel = winnerUsername ? `@${winnerUsername}` : 'a player';
+        await supabase.from('admin_alerts').insert({
+          type: 'jackpot_win',
+          severity: 'high',
+          message: `🎰 ${result.win!.jackpotName} jackpot hit! ${playerLabel} won ${amountFmt}`,
+          metadata: {
+            jackpot_id:   result.win!.jackpotId,
+            jackpot_name: result.win!.jackpotName,
+            amount:       result.win!.amount,
+            user_id:      result.win!.userId,
+            username:     winnerUsername,
+          },
+          resolved: false,
+        });
       }
 
       // Broadcast to all connected clients

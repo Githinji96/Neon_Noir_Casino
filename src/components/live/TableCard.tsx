@@ -26,6 +26,10 @@ export default function TableCard({ table, onJoin }: TableCardProps) {
 
   return (
     <motion.div
+      data-testid={`table-card-${table.id}`}
+      data-game-type={table.gameType}
+      data-table-name={table.name}
+      data-table-status={table.status}
       whileHover={!isFull ? { scale: 1.02, boxShadow: `0 0 28px ${accentColor}33` } : {}}
       transition={{ type: 'spring', stiffness: 300, damping: 22 }}
       className="relative flex flex-col gap-3 p-4 rounded-2xl"
@@ -44,13 +48,17 @@ export default function TableCard({ table, onJoin }: TableCardProps) {
       )}
 
       {/* Game type tag */}
-      <span className="text-[10px] font-orbitron font-bold tracking-widest uppercase"
+      <span
+        data-testid={`table-game-type-${table.id}`}
+        className="text-[10px] font-orbitron font-bold tracking-widest uppercase"
         style={{ color: accentColor }}>
         {table.gameType}
       </span>
 
       {/* Table name */}
-      <h3 className="font-orbitron font-bold text-white text-sm leading-tight pr-16">
+      <h3
+        data-testid={`table-name-${table.id}`}
+        className="font-orbitron font-bold text-white text-sm leading-tight pr-16">
         {table.name}
       </h3>
 
@@ -59,7 +67,7 @@ export default function TableCard({ table, onJoin }: TableCardProps) {
         <span className="text-lg">{table.dealerAvatar}</span>
         <div>
           <p className="text-gray-400 text-[10px]">DEALER</p>
-          <p className="text-white text-xs font-semibold">{table.dealerName}</p>
+          <p data-testid={`table-dealer-${table.id}`} className="text-white text-xs font-semibold">{table.dealerName}</p>
         </div>
       </div>
 
@@ -68,23 +76,31 @@ export default function TableCard({ table, onJoin }: TableCardProps) {
         {/* Players */}
         <div>
           <p className="text-gray-500 text-[10px]">PLAYERS</p>
-          <p className="text-white font-semibold">{table.currentPlayers}/{table.maxPlayers}</p>
+          <p data-testid={`table-players-${table.id}`} className="text-white font-semibold">
+            {table.currentPlayers}/{table.maxPlayers === Infinity ? '∞' : table.maxPlayers}
+          </p>
         </div>
         {/* Bet range */}
         <div className="text-right">
           <p className="text-gray-500 text-[10px]">BET RANGE</p>
-        <span className="text-white font-semibold">KES {table.minBet} – KES {table.maxBet.toLocaleString()}</span>
+          <span data-testid={`table-bet-range-${table.id}`} className="text-white font-semibold">
+            KES {table.minBet} – KES {table.maxBet.toLocaleString()}
+          </span>
         </div>
       </div>
 
       {/* Status */}
-      <div className={`flex items-center gap-1.5 ${s.text}`}>
+      <div
+        data-testid={`table-status-${table.id}`}
+        className={`flex items-center gap-1.5 ${s.text}`}>
         <span className={`w-2 h-2 rounded-full ${s.dot} ${table.status === 'live' ? 'animate-pulse' : ''}`} />
         <span className="text-[11px] font-orbitron font-bold tracking-widest">{s.label}</span>
       </div>
 
       {/* Join button */}
       <button
+        data-testid={`join-table-${table.id}`}
+        aria-label={isFull ? `${table.name} is full` : `Join ${table.name}`}
         onClick={() => !isFull && onJoin(table)}
         disabled={isFull}
         className="mt-auto w-full py-2.5 rounded-xl font-orbitron font-bold text-xs tracking-widest transition-all duration-150 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"

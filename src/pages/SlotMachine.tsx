@@ -38,8 +38,8 @@ export default function SlotMachinePage({ onBack }: SlotMachinePageProps) {
   const locationState = location.state as { id?: string; title?: string; jackpotMode?: boolean } | null;
   const gameId    = locationState?.id    ?? qpGame ?? 'neon-jungle-fruits';
   const gameTitle = locationState?.title ?? (qpGame ? qpGame.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : 'Neon Jungle Fruits');
-  // Cyber Strike 777 always runs in jackpot mode (fixed KES 100 bet)
-  const jackpotMode = gameId === 'cyber-strike-777' ? true : locationState?.jackpotMode ?? false;
+  // Mega Moolah Noir always runs in jackpot mode (fixed KES 100 bet)
+  const jackpotMode = gameId === 'mega-moolah-noir' ? true : locationState?.jackpotMode ?? false;
 
   // If no onBack prop (navigated directly e.g. from jackpots page), go back in history or to lobby
   const handleBack = onBack ?? (() => {
@@ -172,16 +172,32 @@ export default function SlotMachinePage({ onBack }: SlotMachinePageProps) {
     };
   }, []);
 
-  // Spin animation timing: set isSpinning=false after animation completes
+  // Safety fallback: if onSpinComplete never fires (e.g. unmount race or
+  // GameCanvas remount), this prevents the SPIN button freezing permanently.
+  // onSpinComplete (wired below in GameCanvas props) is the primary path
+  // and will call setSpinning(false) first — this is just insurance.
+  const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!isSpinning) return;
-    // Use ref to avoid stale closure on turboMode; animationSpeed is captured fresh
-    const duration = turboRef.current ? 450
-      : animationSpeed === 'slow' ? 2400
-      : animationSpeed === 'fast' ? 900
-      : 1600;
-    const timer = setTimeout(() => setSpinning(false), duration);
-    return () => clearTimeout(timer);
+    // Safety margins = last-col stop time + 400ms buffer
+    // turbo:  280 + 4×80  + 400 = 1000ms
+    // fast:   700 + 4×150 + 400 = 1700ms
+    // normal: 1200 + 4×220 + 400 = 2480ms
+    // slow:   1800 + 4×300 + 400 = 3400ms
+    let safetyMs: number;
+    if (turboRef.current) {
+      safetyMs = 1000;
+    } else if (animationSpeed === 'fast') {
+      safetyMs = 1700;
+    } else if (animationSpeed === 'slow') {
+      safetyMs = 3400;
+    } else {
+      safetyMs = 2480;
+    }
+    safetyTimerRef.current = setTimeout(() => setSpinning(false), safetyMs);
+    return () => {
+      if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
+    };
   }, [isSpinning]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Autoplay loop: triggers next spin after current spin ends.
@@ -282,6 +298,13 @@ export default function SlotMachinePage({ onBack }: SlotMachinePageProps) {
             gameId={gameId}
             animationSpeed={animationSpeed}
             onSpinComplete={() => {
+              // Primary path: all reels have visually stopped.
+              // Cancel the safety fallback timer then end the spin state.
+              if (safetyTimerRef.current) {
+                clearTimeout(safetyTimerRef.current);
+                safetyTimerRef.current = null;
+              }
+              setSpinning(false);
               if (winResults.length > 0 && soundEnabled) {
                 playWinSound(winResults.length >= 3);
               }

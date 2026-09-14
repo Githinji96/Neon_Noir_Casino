@@ -8,12 +8,16 @@ export default function BettingControls() {
   const balance = useGameStore((s) => s.balance);
   const setBet = useGameStore((s) => s.setBet);
   const isSpinning = useGameStore((s) => s.isSpinning);
-  const jackpotMode = useGameStore((s) => s.jackpotMode);
   const activeGameId = useGameStore((s) => s.activeGameId);
-  const isBetLocked = jackpotMode && activeGameId === 'cyber-strike-777';
+  const minBet = useGameStore((s) => s.minBet);
+  const maxBet = useGameStore((s) => s.maxBet);
+  // Bet is locked ONLY for mega-moolah-noir (min === max === 100)
+  // Never lock for any other game regardless of jackpotMode flag
+  const isBetLocked = activeGameId === 'mega-moolah-noir' && minBet === maxBet;
 
-  const MIN_BET = 1;
-  const MAX_BET = 10_000; // cap bet at KES 10,000 — balance check is handled separately
+  // Use per-game limits from store (loaded from admin_game_config)
+  const MIN_BET = minBet;
+  const MAX_BET = maxBet;
 
   const [editing, setEditing] = useState(false);
   const [inputVal, setInputVal] = useState('');

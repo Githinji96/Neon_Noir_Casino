@@ -249,7 +249,7 @@ export default function UserDetailPage() {
       </button>
 
       {/* Header */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h2 className="font-orbitron text-2xl font-bold text-white">{profile.username}</h2>
           <div className="flex items-center gap-3 mt-1">
@@ -258,6 +258,22 @@ export default function UserDetailPage() {
             </span>
             <span className="text-[#FFD700] font-mono text-sm">KES {profile.balance.toLocaleString()}</span>
           </div>
+        </div>
+        {/* Action buttons */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Bet History */}
+          <button
+            onClick={() => navigate(`/admin/users/${userId}/bet-history`)}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-orbitron text-sm font-bold tracking-wider transition-all"
+            style={{
+              background: 'linear-gradient(135deg, rgba(255,215,0,0.15), rgba(255,165,0,0.08))',
+              border: '1px solid rgba(255,215,0,0.35)',
+              color: '#FFD700',
+              boxShadow: '0 0 16px rgba(255,215,0,0.15)',
+            }}
+          >
+            🎰 BET HISTORY
+          </button>
         </div>
       </div>
 
@@ -319,8 +335,43 @@ export default function UserDetailPage() {
             )}
             <button
               onClick={async () => {
-                toast('Password reset email sent.', 'info');
-                await auditLog({ admin_id: adminProfile?.id ?? null, admin_role: adminProfile?.admin_role ?? 'super_admin', action_type: 'password_reset', target_entity: 'profiles', target_id: userId ?? null, previous_value: null, new_value: null, ip_address: null });
+                if (!userId) return;
+                try {
+                  // Fetch the player's email from auth.users via the admin RPC
+                  const { data: users } = await supabase.rpc('admin_get_users', {
+                    p_limit: 500, p_offset: 0,
+                  });
+                  const playerEmail = (users as { id: string; email: string }[] ?? [])
+                    .find((u) => u.id === userId)?.email;
+
+                  if (!playerEmail) {
+                    toast('Could not find player email.', 'error');
+                    return;
+                  }
+
+                  const { error } = await supabase.auth.resetPasswordForEmail(playerEmail, {
+                    redirectTo: `${window.location.origin}/auth/reset-password`,
+                  });
+
+                  if (error) {
+                    toast(`Reset failed: ${error.message}`, 'error');
+                    return;
+                  }
+
+                  toast(`Password reset email sent to ${playerEmail}`, 'success');
+                  await auditLog({
+                    admin_id: adminProfile?.id ?? null,
+                    admin_role: adminProfile?.admin_role ?? 'super_admin',
+                    action_type: 'password_reset',
+                    target_entity: 'profiles',
+                    target_id: userId ?? null,
+                    previous_value: null,
+                    new_value: { email: playerEmail },
+                    ip_address: null,
+                  });
+                } catch (err) {
+                  toast('Unexpected error sending reset email.', 'error');
+                }
               }}
               className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-white text-sm font-semibold transition-colors"
             >

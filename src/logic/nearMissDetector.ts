@@ -30,7 +30,7 @@ export interface NearJackpotConfig {
 export const NEAR_JACKPOT_CONFIGS: Record<string, NearJackpotConfig> = {
   'cyber-strike-777': {
     gameId: 'cyber-strike-777',
-    gameName: 'Mega Jackpot',
+    gameName: 'Cyber Strike 777',
     jackpotSymbols: ['seven', 'wild'],
     nearMissThreshold: 3,
     requiredForJackpot: 5,

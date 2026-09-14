@@ -15,10 +15,13 @@ interface FinancialSummary {
   total_deposited:     number;
   total_withdrawn:     number;
   net_cash_flow:       number;
+  admin_credits_paid:  number;
+  admin_debits_taken:  number;
   total_wagered:       number;
   total_won:           number;
   ggr:                 number;
   player_funds:        number;
+  casino_balance:      number;
   pending_deposits:    number;
   pending_withdrawals: number;
   jackpot_pool:        number;
@@ -41,6 +44,8 @@ interface FlowPoint {
   bucket:      string;
   deposits:    number;
   withdrawals: number;
+  admin_out:   number;
+  admin_in:    number;
   wagered:     number;
   won:         number;
   ggr:         number;
@@ -53,7 +58,7 @@ type Preset = 'today' | 'week' | 'month' | 'last30' | 'custom';
 function presetRange(preset: Preset): { start: Date; end: Date } {
   const now = new Date();
   const end = new Date(now);
-  end.setSeconds(59, 999);
+  end.setHours(23, 59, 59, 999);  // always end-of-day, not current time
 
   const start = new Date(now);
   start.setHours(0, 0, 0, 0);
@@ -81,10 +86,19 @@ function fmt(n: number): string {
 }
 
 function fmtDate(iso: string): string {
-  // Bare date strings like "2025-01-15" must be parsed as local time,
-  // not UTC (new Date("2025-01-15") = UTC midnight → wrong day in UTC+3).
-  const [year, month, day] = iso.split('T')[0].split('-').map(Number);
-  return new Date(year, month - 1, day).toLocaleDateString('en', { month: 'short', day: 'numeric' });
+  if (!iso) return '—';
+  try {
+    // Strip time portion and parse as local date to avoid UTC-offset day shifts
+    const datePart = iso.split('T')[0];
+    const parts = datePart.split('-').map(Number);
+    if (parts.length !== 3 || parts.some(isNaN)) return datePart || '—';
+    const [year, month, day] = parts;
+    const d = new Date(year, month - 1, day);
+    if (isNaN(d.getTime())) return datePart;
+    return d.toLocaleDateString('en', { month: 'short', day: 'numeric' });
+  } catch {
+    return iso;
+  }
 }
 
 // ─── Columns ──────────────────────────────────────────────────────────────────
@@ -103,7 +117,7 @@ const gameColumns: Column<GameStat>[] = [
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function CasinoFinancialPage() {
-  const [preset, setPreset]           = useState<Preset>('last30');
+  const [preset, setPreset]           = useState<Preset>('today');
   const [customStart, setCustomStart] = useState('');
   const [customEnd,   setCustomEnd]   = useState('');
   const [loading, setLoading]         = useState(true);
@@ -114,13 +128,17 @@ export default function CasinoFinancialPage() {
 
   // ── Derived date range as stable ISO strings ──────────────────────────────
   const { rangeStartIso, rangeEndIso } = useMemo(() => {
-    if (preset === 'custom' && customStart && customEnd) {
+    if (preset === 'custom') {
+      // Only proceed when both dates look like valid YYYY-MM-DD strings
+      const validDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(new Date(s).getTime());
+      if (!validDate(customStart) || !validDate(customEnd)) {
+        return { rangeStartIso: null, rangeEndIso: null };
+      }
       return {
         rangeStartIso: new Date(customStart + 'T00:00:00').toISOString(),
         rangeEndIso:   new Date(customEnd   + 'T23:59:59').toISOString(),
       };
     }
-    if (preset === 'custom') return { rangeStartIso: null, rangeEndIso: null };
     const { start, end } = presetRange(preset);
     return { rangeStartIso: start.toISOString(), rangeEndIso: end.toISOString() };
   }, [preset, customStart, customEnd]);
@@ -157,10 +175,13 @@ export default function CasinoFinancialPage() {
         total_deposited:     Number(raw.total_deposited)     || 0,
         total_withdrawn:     Number(raw.total_withdrawn)     || 0,
         net_cash_flow:       Number(raw.net_cash_flow)       || 0,
+        admin_credits_paid:  Number(raw.admin_credits_paid)  || 0,
+        admin_debits_taken:  Number(raw.admin_debits_taken)  || 0,
         total_wagered:       Number(raw.total_wagered)       || 0,
         total_won:           Number(raw.total_won)           || 0,
         ggr:                 Number(raw.ggr)                 || 0,
         player_funds:        Number(raw.player_funds)        || 0,
+        casino_balance:      Number(raw.casino_balance)      || 0,
         pending_deposits:    Number(raw.pending_deposits)    || 0,
         pending_withdrawals: Number(raw.pending_withdrawals) || 0,
         jackpot_pool:        Number(raw.jackpot_pool)        || 0,
@@ -188,12 +209,15 @@ export default function CasinoFinancialPage() {
       // Flow series
       const rawFlow = (flowRes.data ?? []) as {
         bucket: string; deposits: number; withdrawals: number;
+        admin_out: number; admin_in: number;
         wagered: number; won: number; ggr: number;
       }[];
       setFlowSeries(rawFlow.map((r) => ({
         bucket:      fmtDate(r.bucket),
         deposits:    Number(r.deposits)    || 0,
         withdrawals: Number(r.withdrawals) || 0,
+        admin_out:   Number(r.admin_out)   || 0,
+        admin_in:    Number(r.admin_in)    || 0,
         wagered:     Number(r.wagered)     || 0,
         won:         Number(r.won)         || 0,
         ggr:         Number(r.ggr)         || 0,
@@ -273,17 +297,17 @@ export default function CasinoFinancialPage() {
               Financial Overview
             </h2>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-              <StatCard title="Total Deposited"   value={fmt(summary?.total_deposited   ?? 0)} icon="📲" color="green"  subtitle="Successful inflows" />
-              <StatCard title="Total Withdrawn"   value={fmt(summary?.total_withdrawn   ?? 0)} icon="💸" color="red"    subtitle="Successful outflows" />
+              <StatCard title="Total Deposited"   value={fmt(summary?.total_deposited   ?? 0)} icon="📲" color="green"  subtitle="M-Pesa inflows only" />
+              <StatCard title="Total Withdrawn"   value={fmt(summary?.total_withdrawn   ?? 0)} icon="💸" color="red"    subtitle="M-Pesa outflows only" />
               <StatCard title="Net Cash Flow"
                 value={`${(summary?.net_cash_flow ?? 0) < 0 ? '-' : ''}${fmt(Math.abs(summary?.net_cash_flow ?? 0))}`}
                 icon="🔄" color={(summary?.net_cash_flow ?? 0) >= 0 ? 'cyan' : 'red'}
-                subtitle="Deposits − Withdrawals" />
+                subtitle="Deposits + debits − Withdrawals − credits" />
               <StatCard title="Player Funds"      value={fmt(summary?.player_funds      ?? 0)} icon="👥" color="purple" subtitle="Sum of player balances" />
               <StatCard title="GGR"
                 value={`${(summary?.ggr ?? 0) < 0 ? '-' : ''}${fmt(Math.abs(summary?.ggr ?? 0))}`}
                 icon="💰" color={(summary?.ggr ?? 0) >= 0 ? 'yellow' : 'red'}
-                subtitle="Wagered − Won" />
+                subtitle="Wagered − Won (gaming only)" />
             </div>
           </section>
 
@@ -294,6 +318,33 @@ export default function CasinoFinancialPage() {
             <StatCard title="Pending Deposits"     value={fmt(summary?.pending_deposits     ?? 0)} icon="⏳" color="yellow" subtitle="Awaiting confirmation" />
             <StatCard title="Pending Withdrawals"  value={fmt(summary?.pending_withdrawals  ?? 0)} icon="⌛" color="yellow" subtitle="Awaiting processing" />
           </div>
+
+          {/* ── Admin adjustments ─────────────────────────────────────────── */}
+          <section>
+            <h2 className="text-white/50 text-xs font-orbitron uppercase tracking-widest mb-3">
+              Admin Adjustments
+            </h2>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <StatCard
+                title="Admin Credits Paid"
+                value={fmt(summary?.admin_credits_paid ?? 0)}
+                icon="💸" color="red"
+                subtitle="Casino paid to players — reduces house balance"
+              />
+              <StatCard
+                title="Admin Debits Taken"
+                value={fmt(summary?.admin_debits_taken ?? 0)}
+                icon="💰" color="green"
+                subtitle="Reclaimed from players — increases house balance"
+              />
+              <StatCard
+                title="Casino Account Balance"
+                value={fmt(summary?.casino_balance ?? 0)}
+                icon="🏦" color="cyan"
+                subtitle="Live casino ledger balance"
+              />
+            </div>
+          </section>
 
           {/* ── Jackpot summary ──────────────────────────────────────────── */}
           <section>
@@ -313,7 +364,7 @@ export default function CasinoFinancialPage() {
             <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
               <div>
                 <h2 className="text-white/60 text-xs font-orbitron uppercase tracking-widest">Money Flow</h2>
-                <p className="text-white/30 text-xs mt-0.5">Daily deposits · withdrawals · wagers · wins · GGR</p>
+                <p className="text-white/30 text-xs mt-0.5">Daily deposits · withdrawals · admin adjustments · wagers · wins · GGR</p>
               </div>
               <div className="flex gap-1 bg-white/5 border border-white/10 rounded-lg p-1">
                 <button onClick={() => setChartLine('bar')}
@@ -340,11 +391,13 @@ export default function CasinoFinancialPage() {
                     <YAxis tick={{ fill: '#ffffff40', fontSize: 10 }} />
                     <Tooltip contentStyle={chartStyle} formatter={(v) => `KES ${Number(v).toLocaleString()}`} />
                     <Legend wrapperStyle={{ color: '#ffffff80', fontSize: 11 }} />
-                    <Bar dataKey="deposits"    name="Deposits"    fill="#22C55E" radius={[3,3,0,0]} />
-                    <Bar dataKey="withdrawals" name="Withdrawals" fill="#EF4444" radius={[3,3,0,0]} />
-                    <Bar dataKey="wagered"     name="Wagered"     fill="#00FFFF" radius={[3,3,0,0]} />
-                    <Bar dataKey="won"         name="Won"         fill="#A855F7" radius={[3,3,0,0]} />
-                    <Bar dataKey="ggr"         name="GGR"         fill="#FFD700" radius={[3,3,0,0]} />
+                    <Bar dataKey="deposits"    name="Deposits"       fill="#22C55E" radius={[3,3,0,0]} />
+                    <Bar dataKey="withdrawals" name="Withdrawals"    fill="#EF4444" radius={[3,3,0,0]} />
+                    <Bar dataKey="admin_out"   name="Admin Credits"  fill="#F97316" radius={[3,3,0,0]} />
+                    <Bar dataKey="admin_in"    name="Admin Debits"   fill="#06B6D4" radius={[3,3,0,0]} />
+                    <Bar dataKey="wagered"     name="Wagered"        fill="#00FFFF" radius={[3,3,0,0]} />
+                    <Bar dataKey="won"         name="Won"            fill="#A855F7" radius={[3,3,0,0]} />
+                    <Bar dataKey="ggr"         name="GGR"            fill="#FFD700" radius={[3,3,0,0]} />
                   </BarChart>
                 ) : (
                   <LineChart data={flowSeries} margin={{ top: 5, right: 10, bottom: 0, left: 0 }}>
@@ -353,11 +406,13 @@ export default function CasinoFinancialPage() {
                     <YAxis tick={{ fill: '#ffffff40', fontSize: 10 }} />
                     <Tooltip contentStyle={chartStyle} formatter={(v) => `KES ${Number(v).toLocaleString()}`} />
                     <Legend wrapperStyle={{ color: '#ffffff80', fontSize: 11 }} />
-                    <Line type="monotone" dataKey="deposits"    name="Deposits"    stroke="#22C55E" strokeWidth={2} dot={false} />
-                    <Line type="monotone" dataKey="withdrawals" name="Withdrawals" stroke="#EF4444" strokeWidth={2} dot={false} />
-                    <Line type="monotone" dataKey="wagered"     name="Wagered"     stroke="#00FFFF" strokeWidth={1.5} dot={false} />
-                    <Line type="monotone" dataKey="won"         name="Won"         stroke="#A855F7" strokeWidth={1.5} dot={false} />
-                    <Line type="monotone" dataKey="ggr"         name="GGR"         stroke="#FFD700" strokeWidth={2} dot={false} />
+                    <Line type="monotone" dataKey="deposits"    name="Deposits"      stroke="#22C55E" strokeWidth={2}   dot={false} />
+                    <Line type="monotone" dataKey="withdrawals" name="Withdrawals"   stroke="#EF4444" strokeWidth={2}   dot={false} />
+                    <Line type="monotone" dataKey="admin_out"   name="Admin Credits" stroke="#F97316" strokeWidth={1.5} dot={false} strokeDasharray="4 2" />
+                    <Line type="monotone" dataKey="admin_in"    name="Admin Debits"  stroke="#06B6D4" strokeWidth={1.5} dot={false} strokeDasharray="4 2" />
+                    <Line type="monotone" dataKey="wagered"     name="Wagered"       stroke="#00FFFF" strokeWidth={1.5} dot={false} />
+                    <Line type="monotone" dataKey="won"         name="Won"           stroke="#A855F7" strokeWidth={1.5} dot={false} />
+                    <Line type="monotone" dataKey="ggr"         name="GGR"           stroke="#FFD700" strokeWidth={2}   dot={false} />
                   </LineChart>
                 )}
               </ResponsiveContainer>
@@ -391,6 +446,151 @@ export default function CasinoFinancialPage() {
                 pageSize={20}
               />
             )}
+          </section>
+
+          {/* ── Casino Account Balance Reconciliation ───────────────────── */}
+          <section className="bg-white/5 border border-white/10 rounded-2xl p-5">
+            <div className="flex items-center justify-between mb-5 flex-wrap gap-2">
+              <div>
+                <h2 className="text-white/60 text-xs font-orbitron uppercase tracking-widest">Casino Account Balance — Full Breakdown</h2>
+                <p className="text-white/30 text-xs mt-0.5">Reconciliation of the live casino ledger balance</p>
+              </div>
+              <span className="flex items-center gap-1.5 text-[10px] font-orbitron text-green-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                LIVE BALANCE
+              </span>
+            </div>
+
+            {/* Reconciliation table */}
+            <div className="flex flex-col divide-y divide-white/5 rounded-xl overflow-hidden"
+              style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
+
+              {/* Opening balance row */}
+              <div className="flex items-center justify-between px-5 py-3.5"
+                style={{ background: 'rgba(255,255,255,0.03)' }}>
+                <div className="flex items-center gap-3">
+                  <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs bg-white/10 text-white/50 font-orbitron">0</span>
+                  <span className="text-white/50 text-sm font-orbitron tracking-wide">Opening Balance</span>
+                </div>
+                <span className="font-orbitron font-bold text-sm text-white/50">KES 0.00</span>
+              </div>
+
+              {/* Inflows */}
+              {[
+                {
+                  step: '1', label: 'Player Deposits (M-Pesa)',
+                  desc: 'Successful player deposits via Safaricom Daraja',
+                  value: summary?.total_deposited ?? 0,
+                  sign: '+', color: '#22c55e',
+                },
+                {
+                  step: '2', label: 'Admin Debits from Players',
+                  desc: 'Amounts reclaimed from player wallets by admin',
+                  value: summary?.admin_debits_taken ?? 0,
+                  sign: '+', color: '#06b6d4',
+                },
+                {
+                  step: '3', label: 'GGR (Player Losses)',
+                  desc: 'Total bets placed minus total winnings paid out',
+                  value: summary?.ggr ?? 0,
+                  sign: summary?.ggr != null && summary.ggr >= 0 ? '+' : '−',
+                  color: (summary?.ggr ?? 0) >= 0 ? '#FFD700' : '#ef4444',
+                },
+              ].map((row) => (
+                <div key={row.step} className="flex items-center justify-between px-5 py-3.5"
+                  style={{ background: 'rgba(255,255,255,0.02)' }}>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs shrink-0 font-orbitron font-bold"
+                      style={{ background: `${row.color}22`, color: row.color }}>
+                      {row.step}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-white/80 text-sm font-orbitron">{row.label}</p>
+                      <p className="text-white/30 text-[10px] mt-0.5">{row.desc}</p>
+                    </div>
+                  </div>
+                  <span className="font-orbitron font-bold text-sm shrink-0 ml-4"
+                    style={{ color: row.color }}>
+                    {row.sign} KES {Math.abs(Math.round(row.value)).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              ))}
+
+              {/* Outflows */}
+              {[
+                {
+                  step: '4', label: 'Player Withdrawals (M-Pesa)',
+                  desc: 'Successful withdrawals sent to player M-Pesa numbers',
+                  value: summary?.total_withdrawn ?? 0,
+                  color: '#ef4444',
+                },
+                {
+                  step: '5', label: 'Admin Credits to Players',
+                  desc: 'Manual credits paid to player wallets by admin',
+                  value: summary?.admin_credits_paid ?? 0,
+                  color: '#f97316',
+                },
+                {
+                  step: '6', label: 'Jackpot Payouts',
+                  desc: 'Jackpot prizes paid to winners (tracked separately from GGR)',
+                  value: summary?.jackpot_paid ?? 0,
+                  color: '#a855f7',
+                },
+              ].map((row) => (
+                <div key={row.step} className="flex items-center justify-between px-5 py-3.5"
+                  style={{ background: 'rgba(255,255,255,0.02)' }}>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs shrink-0 font-orbitron font-bold"
+                      style={{ background: `${row.color}22`, color: row.color }}>
+                      {row.step}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-white/80 text-sm font-orbitron">{row.label}</p>
+                      <p className="text-white/30 text-[10px] mt-0.5">{row.desc}</p>
+                    </div>
+                  </div>
+                  <span className="font-orbitron font-bold text-sm shrink-0 ml-4"
+                    style={{ color: row.color }}>
+                    − KES {Math.round(row.value).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              ))}
+
+              {/* Result row */}
+              <div className="flex items-center justify-between px-5 py-4"
+                style={{ background: 'linear-gradient(135deg, rgba(255,215,0,0.08), rgba(255,165,0,0.04))' }}>
+                <div className="flex items-center gap-3">
+                  <span className="text-lg">🏦</span>
+                  <div>
+                    <p className="font-orbitron font-bold text-sm text-white tracking-wide">= Casino Account Balance</p>
+                    <p className="text-white/30 text-[10px] mt-0.5">Live ledger value from casino_account table</p>
+                  </div>
+                </div>
+                <span className="font-orbitron font-black text-xl"
+                  style={{ color: '#FFD700', textShadow: '0 0 16px rgba(255,215,0,0.4)' }}>
+                  KES {Math.round(summary?.casino_balance ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+            </div>
+
+            {/* Separate metrics note */}
+            <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+              {[
+                { icon: '👥', label: 'Player Funds (Liability)', value: `KES ${Math.round(summary?.player_funds ?? 0).toLocaleString()}`, note: 'Owed to players — not casino cash' },
+                { icon: '🎯', label: 'Jackpot Pool (Ring-fenced)', value: `KES ${Math.round(summary?.jackpot_pool ?? 0).toLocaleString()}`, note: 'Progressive jackpot reserve' },
+                { icon: '⏳', label: 'Pending (Not yet settled)', value: `KES ${Math.round((summary?.pending_deposits ?? 0) + (summary?.pending_withdrawals ?? 0)).toLocaleString()}`, note: 'Does not affect current balance' },
+              ].map((item) => (
+                <div key={item.label} className="rounded-xl px-4 py-3 flex items-start gap-3"
+                  style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <span className="text-lg shrink-0">{item.icon}</span>
+                  <div>
+                    <p className="font-orbitron text-white/50 tracking-wide" style={{ fontSize: '9px' }}>{item.label}</p>
+                    <p className="font-orbitron font-bold text-white text-sm mt-0.5">{item.value}</p>
+                    <p className="text-white/25 mt-0.5" style={{ fontSize: '9px' }}>{item.note}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
           </section>
 
           {/* ── Accounting note ──────────────────────────────────────────── */}
