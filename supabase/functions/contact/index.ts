@@ -3,7 +3,7 @@
 // Deploy: npx supabase functions deploy contact
 // Secrets: RESEND_API_KEY, SUPPORT_EMAIL (optional, defaults to bonfacegithinji64@gmail.com)
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from '@supabase/supabase-js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',

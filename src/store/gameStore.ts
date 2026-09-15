@@ -3,10 +3,10 @@ import { type SpinGrid, generateSpin, setActiveGame } from '../logic/rng';
 import { type WinResult, evaluatePaylines } from '../logic/paylines';
 import { calculatePayout, calculateScatterPayout } from '../logic/payout';
 import { recordSpin, getSessionStats, setActiveGameRTP } from '../logic/rtpController';
-import { BET_LADDER, DEFAULT_BET } from '../config/betLadder';
+import { DEFAULT_BET } from '../config/betLadder';
 import { GAME_CONFIG } from '../config/gameConfig';
 import { getSymbolsForGame } from '../config/symbols';
-import { JACKPOT_GAME_IDS, POPULAR_GAME_IDS } from '../config/mockData';
+import { JACKPOT_GAME_IDS } from '../config/mockData';
 import { useJackpotStore } from './jackpotStore';
 import { supabase } from '../lib/supabase';
 
@@ -14,9 +14,37 @@ import { supabase } from '../lib/supabase';
 let _getAuthUser: (() => string | null) | null = null;
 export function setAuthUserGetter(fn: () => string | null) { _getAuthUser = fn; }
 
+/** Resolve the current user ID.
+ *  Primary: use the registered getter (set by authStore.init).
+ *  Fallback: read directly from the supabase session cache — handles the
+ *  first-spin race where init() hasn't finished registering the getter yet.
+ */
+async function resolveUserId(): Promise<string | null> {
+  // Fast path — getter already registered
+  if (_getAuthUser) {
+    const id = _getAuthUser();
+    if (id) return id;
+  }
+  // Slow path — read session directly (only on first spin before init completes)
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.user?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// Flag: true while apply_spin_result is in-flight.
+// refreshBalance checks this so it never clobbers optimistic spin state
+// with a stale DB value that arrived before the RPC completed.
+let _spinPending = false;
+export function isSpinPending() { return _spinPending; }
+
 interface GameState {
   balance: number;
   bet: number;
+  minBet: number;   // per-game minimum from admin_game_config
+  maxBet: number;   // per-game maximum from admin_game_config
   reels: SpinGrid;
   freeSpinsRemaining: number;
   freeSpinsTotalWin: number;
@@ -47,8 +75,10 @@ interface GameState {
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
-  balance: 1000.00,
+  balance: 0.00,
   bet: DEFAULT_BET,
+  minBet: 1,       // updated by setGame from admin_game_config
+  maxBet: 10_000,  // updated by setGame from admin_game_config
   reels: Array.from({ length: 5 }, () => Array(3).fill('bell')) as SpinGrid, // safe initial grid, replaced on first spin
   freeSpinsRemaining: 0,
   freeSpinsTotalWin: 0,
@@ -109,17 +139,28 @@ export const useGameStore = create<GameState>((set, get) => ({
     const grid = generateSpin();
     const { wins, scatterCount, triggerFreeSpins } = evaluatePaylines(grid);
 
-    // Near-miss detection (only on jackpot-linked games, only on losing spins)
-    // Exclude popular choice games from near-miss notifications
-    // Only check for near-misses when the active game is jackpot-enabled or jackpotMode is true
-    if (!isFreeSpins && jackpotWinAmount === 0 && (state.jackpotMode || JACKPOT_GAME_IDS.has(state.activeGameId)) && !POPULAR_GAME_IDS.has(state.activeGameId)) {
+    // Near-miss detection — only on jackpot games, only on non-winning spins,
+    // only after jackpot win check (jackpotWinAmount === 0 guards against
+    // showing "near miss" when the player actually won the jackpot)
+    if (!isFreeSpins && jackpotWinAmount === 0 && JACKPOT_GAME_IDS.has(state.activeGameId)) {
       import('../logic/nearMissDetector').then(({ detectNearMiss }) => {
         import('./nearMissStore').then(({ useNearMissStore }) => {
           const nearMissStore = useNearMissStore.getState();
           nearMissStore.recordJackpotBet();
-          const result = detectNearMiss(grid);
+
+          // Only evaluate if the player is eligible (cooldowns satisfied)
+          if (!nearMissStore.isEligible()) return;
+
+          const result = detectNearMiss(grid, state.activeGameId);
           if (result.isNearMiss) {
-            nearMissStore.showNotification(result.message);
+            nearMissStore.showNotification(result.message, result.gameName);
+            nearMissStore.logEvent({
+              gameId: state.activeGameId,
+              jackpotSymbol: result.jackpotSymbol ?? '',
+              matchedPositions: result.matchedPositions,
+              requiredPositions: result.requiredPositions,
+              timestamp: Date.now(),
+            });
           }
         });
       });
@@ -149,29 +190,62 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!isFreeSpins) {
       recordSpin(state.bet, totalPayout);
 
-      const userId = _getAuthUser ? _getAuthUser() : null;
-      if (userId) {
-        // Award VIP points (fire and forget)
-        import('./vipStore').then(({ useVIPStore }) => {
-          useVIPStore.getState().awardPoints(userId, state.bet, 'bet');
-          if (totalPayout < state.bet) {
-            useVIPStore.getState().recordLoss(userId, state.bet - totalPayout);
-          }
+      // Capture values now before async work begins
+      const betSnapshot    = state.bet;
+      const gameIdSnapshot = state.activeGameId;
+
+      // Run all async DB work in a self-contained async block so spin() stays sync
+      void (async () => {
+        const userId = await resolveUserId();
+        if (!userId) return;
+
+        // Also register the getter lazily so future spins use the fast path
+        if (!_getAuthUser) {
+          _getAuthUser = () => userId;
+        }
+
+        // Block refreshBalance from clobbering our optimistic balance update
+        _spinPending = true;
+
+        // Apply spin result via SECURITY DEFINER RPC
+        const { data, error } = await supabase.rpc('apply_spin_result', {
+          p_user_id: userId,
+          p_bet:     betSnapshot,
+          p_payout:  totalPayout,
         });
 
-        // Fire-and-forget: persist spin to Supabase for real GGR/RTP analytics
-        supabase.from('spins').insert({
-          user_id: userId,
-          game_id: state.activeGameId,
-          bet: state.bet,
-          payout: totalPayout,
-          is_free_spin: false,
-        }).then(({ error }) => {
-          if (error && import.meta.env.DEV) {
-            console.warn('[gameStore] spin insert failed:', error.message);
+        _spinPending = false;
+
+        if (error) {
+          console.warn('[gameStore] apply_spin_result failed:', error.message);
+        } else if (data && typeof data === 'object' && 'balance' in data) {
+          const serverBalance = Number((data as { balance: number }).balance);
+          if (Math.abs(serverBalance - newBalance) > 0.01) {
+            useGameStore.setState({ balance: serverBalance });
+            const { useAuthStore } = await import('./authStore');
+            useAuthStore.setState((s) => ({
+              profile: s.profile ? { ...s.profile, balance: serverBalance } : null,
+            }));
           }
+        }
+
+        // Award VIP points
+        const { useVIPStore } = await import('./vipStore');
+        useVIPStore.getState().awardPoints(userId, betSnapshot, 'bet');
+        if (totalPayout < betSnapshot) {
+          useVIPStore.getState().recordLoss(userId, betSnapshot - totalPayout);
+        }
+
+        // Persist spin record for financial reporting
+        const { error: spinErr } = await supabase.from('spins').insert({
+          user_id:      userId,
+          game_id:      gameIdSnapshot,
+          bet:          betSnapshot,
+          payout:       totalPayout,
+          is_free_spin: false,
         });
-      }
+        if (spinErr) console.warn('[gameStore] spin insert failed:', spinErr.message, spinErr.code);
+      })();
     }
 
     const stats = getSessionStats();
@@ -202,16 +276,21 @@ export const useGameStore = create<GameState>((set, get) => ({
       isJackpot: jackpotWinAmount > 0,
       sessionRTP: stats.currentRTP,
     });
+
+    // Keep authStore profile balance in sync so navbar shows correct value
+    import('./authStore').then(({ useAuthStore }) => {
+      useAuthStore.setState((s) => ({
+        profile: s.profile ? { ...s.profile, balance: newBalance } : null,
+      }));
+    });
   },
 
   setBet: (direction) => {
-    const { bet } = get();
-    const currentIndex = BET_LADDER.indexOf(bet);
-    const index = currentIndex === -1 ? BET_LADDER.indexOf(DEFAULT_BET) : currentIndex;
+    const { bet, minBet, maxBet } = get();
     if (direction === 'up') {
-      set({ bet: BET_LADDER[Math.min(index + 1, BET_LADDER.length - 1)] });
+      set({ bet: Math.min(bet + 1, maxBet) });
     } else {
-      set({ bet: BET_LADDER[Math.max(index - 1, 0)] });
+      set({ bet: Math.max(bet - 1, minBet) });
     }
   },
 
@@ -223,14 +302,47 @@ export const useGameStore = create<GameState>((set, get) => ({
   setSpinning: (value: boolean) => set({ isSpinning: value }),
   clearWinResults: () => set({ winResults: [] }),
   endFreeSpins: () => set({ freeSpinsRemaining: 0, freeSpinsTotalWin: 0 }),
-  setGame: (gameId: string, jackpotMode = false) => {
+  setGame: (gameId: string, _jackpotMode = false) => {
     setActiveGame(gameId);
     setActiveGameRTP(gameId);
     const syms = getSymbolsForGame(gameId);
     const firstSym = syms[0]?.id ?? 'cherry';
     const idleGrid = Array.from({ length: 5 }, () => Array(3).fill(firstSym)) as SpinGrid;
-    // Cyber Strike 777 requires a fixed KES 100 bet when played in jackpot mode
-    const fixedBet = jackpotMode && gameId === 'cyber-strike-777' ? { bet: 100 } : {};
-    set({ activeGameId: gameId, jackpotMode, winResults: [], isSpinning: false, autoplay: false, reels: idleGrid, ...fixedBet });
+
+    // Mega Moolah Noir is the mega jackpot — bet is always fixed at KES 100,
+    // minBet = maxBet = 100 locks the controls.
+    const isMegaJackpot = gameId === 'mega-moolah-noir';
+    const fixedState = isMegaJackpot
+      ? { bet: 100, minBet: 100, maxBet: 100, jackpotMode: true }
+      : {};
+
+    set({
+      activeGameId: gameId,
+      jackpotMode: isMegaJackpot ? true : false,  // explicitly reset for all non-jackpot games
+      winResults: [],
+      isSpinning: false,
+      autoplay: false,
+      reels: idleGrid,
+      ...fixedState,
+    });
+
+    // For non-mega-jackpot games: load per-game bet limits from admin_game_config.
+    if (!isMegaJackpot) {
+      void Promise.resolve(supabase
+        .from('admin_game_config')
+        .select('min_bet, max_bet')
+        .eq('game_id', gameId)
+        .maybeSingle()
+      ).then(({ data }) => {
+          let minBet = data?.min_bet ?? 1;
+          let maxBet = data?.max_bet ?? 10_000;
+          if (minBet >= maxBet) { minBet = 1; maxBet = 10_000; }
+          const currentBet = useGameStore.getState().bet;
+          const clampedBet = Math.min(Math.max(currentBet, minBet), maxBet);
+          set({ minBet, maxBet, bet: clampedBet });
+        }).catch(() => {
+          set({ minBet: 1, maxBet: 10_000 });
+        });
+    }
   },
 }));

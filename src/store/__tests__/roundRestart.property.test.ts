@@ -1,4 +1,4 @@
-// Property test: round restart refunds all bets (Spec P22)
+ // Property test: round restart refunds all bets (Spec P22)
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as fc from 'fast-check';

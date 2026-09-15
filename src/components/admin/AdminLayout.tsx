@@ -13,7 +13,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/admin/rtp':         'RTP Control',
   '/admin/jackpots':    'Jackpots',
   '/admin/live-tables': 'Live Tables',
-  '/admin/analytics':   'Analytics',
+  '/admin/casino-financial': 'Casino Funds',
   '/admin/fraud':           'Fraud & Risk',
   '/admin/support-tickets': 'Support Tickets',
   '/admin/audit':           'Audit Logs',
@@ -42,7 +42,7 @@ export default function AdminLayout() {
           <AdminTopbar title={title} onMenuClick={() => setSidebarOpen(true)} />
 
           <main className="flex-1 overflow-y-auto p-6">
-            <Outlet key={pathname} />
+            <Outlet />
           </main>
         </div>
       </div>

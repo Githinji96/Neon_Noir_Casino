@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { POPULAR_GAMES } from '../config/mockData';
 
 interface PopularChoicesSectionProps {
   onGameClick: (id: string, title: string) => void;
+  sectionRef?: React.RefObject<HTMLElement>;
 }
 
 const volatilityColor: Record<string, string> = {
@@ -11,15 +13,41 @@ const volatilityColor: Record<string, string> = {
   High: 'text-red-400 border-red-400/40',
 };
 
-export default function PopularChoicesSection({ onGameClick }: PopularChoicesSectionProps) {
+export default function PopularChoicesSection({ onGameClick, sectionRef }: PopularChoicesSectionProps) {
+  const [highlighted, setHighlighted] = useState(false);
+
+  // Called externally via ref to trigger the brief heading glow
+  const highlight = () => {
+    setHighlighted(true);
+    setTimeout(() => setHighlighted(false), 1500);
+  };
+
+  // Expose highlight so CasinoLobby can call it after scrolling
+  if (sectionRef && (sectionRef as React.MutableRefObject<{ highlight?: () => void } | null>).current !== null) {
+    (sectionRef as unknown as React.MutableRefObject<{ highlight: () => void }>).current = { highlight };
+  }
+
   return (
-    <section className="px-6 md:px-10 py-8">
+    <section
+      id="popular-choices"
+      ref={sectionRef as React.RefObject<HTMLElement>}
+      className="px-6 md:px-10 py-8"
+    >
       {/* Title */}
       <div className="mb-6">
-        <h2 className="font-orbitron text-2xl font-bold text-white tracking-widest uppercase">
+        <h2
+          className="font-orbitron text-2xl font-bold tracking-widest uppercase transition-colors duration-300"
+          style={{ color: highlighted ? '#FFD700' : '#fff', textShadow: highlighted ? '0 0 20px rgba(255,215,0,0.6)' : 'none' }}
+        >
           Popular Choices
         </h2>
-        <div className="mt-2 h-0.5 w-16 bg-yellow-400 shadow-[0_0_8px_#FFD700]" />
+        <div
+          className="mt-2 h-0.5 w-16 transition-all duration-300"
+          style={{
+            background: '#FFD700',
+            boxShadow: highlighted ? '0 0 16px #FFD700' : '0 0 8px #FFD700',
+          }}
+        />
       </div>
 
       {/* Grid */}

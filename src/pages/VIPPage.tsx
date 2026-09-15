@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, Link } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import BottomNav from '../components/BottomNav';
+import WeeklyCashbackCard from '../components/WeeklyCashbackCard';
+import WeeklyCashbackHistory from '../components/WeeklyCashbackHistory';
 import { useAuthStore } from '../store/authStore';
 import { useVIPStore } from '../store/vipStore';
 import { VIP_TIERS, getNextTier } from '../config/vipConfig';
@@ -15,12 +17,17 @@ interface LeaderboardEntry {
 }
 
 export default function VIPPage() {
-  const navigate = useNavigate();
-  const { user } = useAuthStore();
-  const { totalPoints, monthlyPoints, currentTier, cashbackAvailable, loadVIP, claimCashback } = useVIPStore();
+  const { user, loading: authLoading } = useAuthStore();
+  const { totalPoints, monthlyPoints, currentTier, loadVIP } = useVIPStore();
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
-  const [claiming, setClaiming] = useState(false);
-  const [claimMsg, setClaimMsg] = useState('');
+  // Safety net: if auth loading takes > 4s, treat as unauthenticated (same as ProtectedRoute)
+  const [authTimedOut, setAuthTimedOut] = useState(false);
+
+  useEffect(() => {
+    if (!authLoading) return;
+    const t = setTimeout(() => setAuthTimedOut(true), 4_000);
+    return () => clearTimeout(t);
+  }, [authLoading]);
 
   const nextTier = getNextTier(currentTier.level);
   const progressPct = nextTier
@@ -28,8 +35,9 @@ export default function VIPPage() {
     : 100;
 
   useEffect(() => {
+    if (authLoading || !user) return;
     window.scrollTo({ top: 0, behavior: 'smooth' });
-    if (user?.id) loadVIP(user.id);
+    loadVIP(user.id);
 
     // Load leaderboard
     supabase
@@ -39,7 +47,6 @@ export default function VIPPage() {
       .limit(10)
       .then(async ({ data }) => {
         if (!data?.length) return;
-        // Fetch usernames separately
         const ids = data.map((r) => r.user_id);
         const { data: profiles } = await supabase
           .from('profiles')
@@ -53,25 +60,26 @@ export default function VIPPage() {
           total_points: r.total_points,
         })));
       });
-  }, [user?.id]);
-
-  async function handleClaimCashback() {
-    if (!user?.id || cashbackAvailable <= 0) return;
-    setClaiming(true);
-    const amount = await claimCashback(user.id);
-    if (amount > 0) {
-      const { useGameStore } = await import('../store/gameStore');
-      useGameStore.setState((s) => ({ balance: Math.round((s.balance + amount) * 100) / 100 }));
-      setClaimMsg(`KES ${amount.toFixed(2)} added to your balance!`);
-      setTimeout(() => setClaimMsg(''), 4000);
-    }
-    setClaiming(false);
-  }
+  }, [user?.id, authLoading]);
 
   const tierColors: Record<string, string> = {
     bronze: '#CD7F32', silver: '#C0C0C0', gold: '#FFD700',
     platinum: '#E5E4E2', diamond: '#B9F2FF',
   };
+
+  // Still initializing auth — show spinner, not content or footer
+  if (authLoading && !authTimedOut) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="w-10 h-10 rounded-full border-4 border-yellow-400 border-t-transparent animate-spin" />
+      </div>
+    );
+  }
+
+  // Confirmed signed out — redirect immediately (synchronous, no flicker)
+  if (!user) {
+    return <Navigate to="/auth/login" replace state={{ from: { pathname: '/vip' } }} />;
+  }
 
   return (
     <div className="relative bg-black min-h-screen">
@@ -141,28 +149,17 @@ export default function VIPPage() {
           )}
         </motion.div>
 
-        {/* Cashback */}
-        <div className="rounded-2xl p-5 mb-6"
-          style={{ background: 'rgba(255,215,0,0.06)', border: '1px solid rgba(255,215,0,0.2)' }}>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-orbitron text-xs text-yellow-400/60 tracking-widest uppercase">Cashback Available</p>
-              <p className="font-orbitron text-3xl font-black text-yellow-400 mt-1">
-                KES {cashbackAvailable.toFixed(2)}
-              </p>
-              <p className="text-white/30 text-xs mt-1">{currentTier.cashbackRate}% of net losses · credited daily</p>
-            </div>
-            <button
-              onClick={handleClaimCashback}
-              disabled={cashbackAvailable <= 0 || claiming || !user}
-              className="px-6 py-3 rounded-xl font-orbitron text-sm font-bold tracking-widest text-black transition-all disabled:opacity-30"
-              style={{ background: 'linear-gradient(135deg, #FFD700, #FFA500)', boxShadow: '0 0 16px rgba(255,215,0,0.3)' }}
-            >
-              {claiming ? 'CLAIMING...' : 'CLAIM'}
-            </button>
+        {/* Weekly Cashback */}
+        {user && (
+          <div className="mb-6">
+            <WeeklyCashbackCard
+              userId={user.id}
+              tierColor={currentTier.color}
+              tierLabel={currentTier.label}
+              cashbackRate={currentTier.cashbackRate}
+            />
           </div>
-          {claimMsg && <p className="text-green-400 text-sm font-orbitron mt-2">{claimMsg}</p>}
-        </div>
+        )}
 
         {/* All Tiers */}
         <h2 className="font-orbitron text-sm text-white/40 tracking-widest uppercase mb-4">All Tiers</h2>
@@ -225,6 +222,13 @@ export default function VIPPage() {
           </div>
         </div>
 
+        {/* Weekly Cashback History */}
+        {user && (
+          <div className="mb-8">
+            <WeeklyCashbackHistory />
+          </div>
+        )}
+
         {/* Leaderboard */}
         {leaderboard.length > 0 && (
           <div>
@@ -253,16 +257,16 @@ export default function VIPPage() {
         {!user && (
           <div className="text-center py-12">
             <p className="text-white/40 font-orbitron mb-4">Sign in to track your VIP progress</p>
-            <button onClick={() => navigate('/auth/login')}
-              className="px-8 py-3 rounded-xl font-orbitron text-sm font-bold text-black"
+            <Link to="/auth/login"
+              className="px-8 py-3 rounded-xl font-orbitron text-sm font-bold text-black inline-block"
               style={{ background: 'linear-gradient(135deg, #FFD700, #FFA500)' }}>
               SIGN IN
-            </button>
+            </Link>
           </div>
         )}
       </main>
 
-      <BottomNav activeTab="home" onTabChange={() => {}} />
+      <BottomNav />
     </div>
   );
 }

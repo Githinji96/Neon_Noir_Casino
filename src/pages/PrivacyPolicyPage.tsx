@@ -124,15 +124,6 @@ export default function PrivacyPolicyPage() {
               </ul>
             </div>
             <div>
-              <p className="text-yellow-400/80 font-semibold font-orbitron text-xs tracking-wider mb-1">Technical & Device Data</p>
-              <ul className="list-disc list-inside space-y-1 ml-1">
-                <li>IP Address</li>
-                <li>Device Information (type, model, operating system)</li>
-                <li>Browser Information (type, version, language settings)</li>
-                <li>Login History (timestamps, location data)</li>
-              </ul>
-            </div>
-            <div>
               <p className="text-yellow-400/80 font-semibold font-orbitron text-xs tracking-wider mb-1">Financial & Gaming Data</p>
               <ul className="list-disc list-inside space-y-1 ml-1">
                 <li>Deposit &amp; Withdrawal History</li>

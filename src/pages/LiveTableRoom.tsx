@@ -6,7 +6,7 @@ import { useGameStore } from '../store/gameStore';
 import { useAuthStore } from '../store/authStore';
 import { useLiveTablesStore } from '../store/liveTablesStore';
 import { supabase } from '../lib/supabase';
-import { getTableChipValues, type LiveTable } from '../config/liveTablesData';
+import { getTableChipValues, INITIAL_TABLES, type LiveTable } from '../config/liveTablesData';
 import { outcomeEngine, type RoundResult } from '../logic/outcomeEngine/outcomeEngine';
 import type { GameMode } from '../logic/outcomeEngine/outcomeConfig';
 
@@ -19,7 +19,10 @@ export default function LiveTableRoom() {
   const tables = useLiveTablesStore((s) => s.tables);
   const startPolling = useLiveTablesStore((s) => s.startPolling);
   const fallbackTable = (location.state as { table: LiveTable } | null)?.table;
-  const table = tables.find((entry) => entry.id === tableId) ?? fallbackTable;
+  // Also fall back to INITIAL_TABLES so direct URL navigation works in tests
+  const table = tables.find((entry) => entry.id === tableId)
+    ?? fallbackTable
+    ?? INITIAL_TABLES.find((t) => t.id === tableId);
 
   const balance = useGameStore((s) => s.balance);
   const setBalance = (v: number) => useGameStore.setState({ balance: v });
@@ -32,17 +35,18 @@ export default function LiveTableRoom() {
   const [lastBet, setLastBet] = useState(0);
   const [timer, setTimer] = useState(15);
   const [sessionRTP, setSessionRTP] = useState(0);
-  const [log, setLog] = useState<string[]>([]);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const nextRoundTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const balanceRef = useRef(balance);
   const chipsRef = useRef(chips);
+  const tableRef = useRef(table);
   // tracks whether the user has explicitly clicked PLACE BET this round
   const betPlacedRef = useRef(false);
 
   useEffect(() => { balanceRef.current = balance; }, [balance]);
   useEffect(() => { chipsRef.current = chips; }, [chips]);
+  useEffect(() => { tableRef.current = table; }, [table]);
 
   const balanceMountedRef = useRef(false);
   useEffect(() => {
@@ -126,8 +130,12 @@ export default function LiveTableRoom() {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function startBettingPhase() {
-    if (table?.status !== 'live') return;
+  function startBettingPhase(fromTimeout = false) {
+    // When called from a timeout (auto-advance), don't block on status —
+    // the table ref may be transiently stale. Only block manual re-starts
+    // when status is explicitly 'waiting'.
+    if (!fromTimeout && tableRef.current?.status === 'waiting') return;
+
     // Reset everything for a fresh round
     betPlacedRef.current = false;
     chipsRef.current = 0;
@@ -149,7 +157,7 @@ export default function LiveTableRoom() {
             // No bet placed — just start next round after a short pause
             // Use nextRoundTimeoutRef so it gets cancelled properly on cleanup
             if (nextRoundTimeoutRef.current) clearTimeout(nextRoundTimeoutRef.current);
-            nextRoundTimeoutRef.current = setTimeout(startBettingPhase, 1000);
+            nextRoundTimeoutRef.current = setTimeout(() => startBettingPhase(true), 1000);
           }
           return 0;
         }
@@ -167,7 +175,7 @@ export default function LiveTableRoom() {
     nextRoundTimeoutRef.current = setTimeout(() => {
       const bet = chipsRef.current;
       if (bet <= 0) {
-        nextRoundTimeoutRef.current = setTimeout(startBettingPhase, 1000);
+        nextRoundTimeoutRef.current = setTimeout(() => startBettingPhase(true), 1000);
         return;
       }
 
@@ -180,7 +188,29 @@ export default function LiveTableRoom() {
       const newBalance = Math.round((balanceRef.current - bet + resolved.payout) * 100) / 100;
       setBalance(Math.max(0, newBalance));
 
-      // Record to spins table for GGR tracking (same as slot machine)
+      // Persist the balance change to DB via the same SECURITY DEFINER RPC
+      // used by slot spins. Without this, the 30s refreshBalance poll (or a
+      // tab-focus event) would fetch the stale pre-bet DB balance and overwrite
+      // the player's local balance — making the live table result disappear.
+      if (user?.id) {
+        void supabase.rpc('apply_spin_result', {
+          p_user_id: user.id,
+          p_bet:     bet,
+          p_payout:  resolved.payout,
+        }).then(({ data: rpcData, error: rpcErr }) => {
+          if (rpcErr) {
+            if (import.meta.env.DEV) console.warn('[LiveTableRoom] apply_spin_result failed:', rpcErr.message);
+          } else if (rpcData && typeof rpcData === 'object' && 'balance' in rpcData) {
+            // Reconcile with server balance — update both stores
+            const serverBal = Number((rpcData as { balance: number }).balance);
+            if (Math.abs(serverBal - Math.max(0, newBalance)) > 0.01) {
+              useGameStore.setState({ balance: serverBal });
+            }
+          }
+        });
+      }
+
+      // Record to spins table for GGR tracking
       if (user?.id) {
         supabase.from('spins').insert({
           user_id: user.id,
@@ -193,19 +223,7 @@ export default function LiveTableRoom() {
         });
       }
 
-      const netChange = Math.round((resolved.payout - bet) * 100) / 100;
-      const resultLabel = resolved.isPush
-        ? `Tie — returned KES ${bet.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
-        : resolved.won
-          ? `+KES ${netChange.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
-          : `-KES ${bet.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
-
-      setLog((prev) => [
-        `${resolved.outcome} | Bet KES ${bet.toLocaleString('en-US', { minimumFractionDigits: 2 })} → ${resultLabel} | RTP ${resolved.sessionRTP}%`,
-        ...prev.slice(0, 9),
-      ]);
-
-      nextRoundTimeoutRef.current = setTimeout(startBettingPhase, 5000);
+      nextRoundTimeoutRef.current = setTimeout(() => startBettingPhase(true), 5000);
     }, 2000);
   }
 
@@ -252,7 +270,9 @@ export default function LiveTableRoom() {
     <div className="min-h-screen bg-black">
       <Navbar />
       <main className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 pb-24 md:pb-6">
-        <button onClick={() => navigate('/live-tables')}
+        <button
+          data-testid="back-to-tables"
+          onClick={() => navigate('/live-tables')}
           className="mb-4 font-orbitron text-xs text-gray-400 hover:text-white tracking-widest transition-colors">
           ← LIVE TABLES
         </button>
@@ -280,12 +300,17 @@ export default function LiveTableRoom() {
             </div>
 
             {/* Game state */}
-            <div className="rounded-xl px-5 py-4 flex items-center justify-between"
+            <div
+              data-testid="game-state-panel"
+              data-phase={phase}
+              className="rounded-xl px-5 py-4 flex items-center justify-between"
               style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
               <div>
                 <p className="text-gray-400 text-xs font-orbitron tracking-widest">GAME STATE</p>
                 <AnimatePresence mode="wait">
-                  <motion.p key={phaseLabel} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                  <motion.p
+                    data-testid="game-phase-label"
+                    key={phaseLabel} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
                     className="font-orbitron font-bold text-sm mt-1"
                     style={{ color: phase === 'result' ? (result?.isPush ? '#FFD700' : result?.won ? '#00ff88' : '#ff4466') : accentColor }}>
                     {phaseLabel}
@@ -296,7 +321,7 @@ export default function LiveTableRoom() {
                 {phase === 'betting' && (
                   <>
                     <p className="text-gray-400 text-xs font-orbitron tracking-widest">TIME LEFT</p>
-                    <p className="font-orbitron font-bold text-2xl" style={{ color: timer <= 5 ? '#ff4466' : accentColor }}>{timer}s</p>
+                    <p data-testid="betting-timer" className="font-orbitron font-bold text-2xl" style={{ color: timer <= 5 ? '#ff4466' : accentColor }}>{timer}s</p>
                   </>
                 )}
                 {sessionRTP > 0 && (
@@ -305,25 +330,17 @@ export default function LiveTableRoom() {
               </div>
             </div>
 
-            {/* Round log */}
-            {log.length > 0 && (
-              <div className="rounded-xl px-4 py-3"
-                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <p className="text-gray-500 text-[10px] font-orbitron tracking-widest mb-2">ROUND HISTORY</p>
-                {log.map((entry, i) => (
-                  <p key={i} className="text-gray-400 text-xs py-0.5 border-b border-white/5 last:border-0">{entry}</p>
-                ))}
-              </div>
-            )}
+
+
           </div>
 
           {/* Right: betting panel */}
-          <div className="flex flex-col gap-4">
+          <div data-testid="betting-panel" className="flex flex-col gap-4">
             {/* Balance */}
             <div className="rounded-xl px-4 py-3 flex items-center justify-between"
               style={{ background: 'rgba(255,215,0,0.08)', border: '1px solid rgba(255,215,0,0.2)' }}>
               <span className="text-gray-400 text-xs font-orbitron tracking-widest">BALANCE</span>
-              <span className="font-orbitron font-bold text-yellow-300">
+              <span data-testid="game-balance" className="font-orbitron font-bold text-yellow-300">
                 KES {balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
               </span>
             </div>
@@ -335,6 +352,8 @@ export default function LiveTableRoom() {
               <div className="flex items-center gap-2">
                 <span className="text-gray-300 text-sm">KES</span>
                 <input
+                  data-testid="bet-input"
+                  aria-label="Bet amount in KES"
                   type="number"
                   inputMode="numeric"
                   min={0}
@@ -385,11 +404,16 @@ export default function LiveTableRoom() {
             </div>
 
             {/* Chips */}
-            <div>
+            <div data-testid="chip-selector">
               <p className="text-gray-500 text-[10px] font-orbitron tracking-widest mb-2">SELECT CHIPS</p>
               <div className="grid grid-cols-3 gap-2">
                 {chipValues.map((val) => (
-                  <button key={val} onClick={() => addChip(val)} disabled={phase !== 'betting'}
+                  <button
+                    key={val}
+                    data-testid={`chip-${val}`}
+                    aria-label={`Select KES ${val}`}
+                    onClick={() => addChip(val)}
+                    disabled={phase !== 'betting'}
                     className="py-2 rounded-xl font-orbitron font-bold text-xs tracking-wider transition-all active:scale-95 disabled:opacity-30"
                     style={{ background: `${accentColor}22`, color: accentColor, border: `1px solid ${accentColor}44` }}>
                     KES {val.toLocaleString()}
@@ -397,7 +421,7 @@ export default function LiveTableRoom() {
                 ))}
               </div>
               {table && (
-                <p className="text-white/20 text-[10px] font-orbitron mt-2 text-center">
+                <p data-testid="bet-range-label" className="text-white/20 text-[10px] font-orbitron mt-2 text-center">
                   Min KES {table.minBet} · Max KES {table.maxBet.toLocaleString()}
                 </p>
               )}
@@ -406,16 +430,22 @@ export default function LiveTableRoom() {
             {/* Actions */}
             <div className="flex flex-col gap-1">
               {table && chips > 0 && chips < table.minBet && (
-                <p className="text-yellow-400 text-[10px] font-orbitron text-center">
+                <p data-testid="min-bet-warning" className="text-yellow-400 text-[10px] font-orbitron text-center">
                   Min bet is KES {table.minBet}
                 </p>
               )}
               <div className="flex gap-2">
-                <button onClick={clearBet} disabled={phase !== 'betting' || chips === 0}
+                <button
+                  data-testid="clear-bet-button"
+                  onClick={clearBet}
+                  disabled={phase !== 'betting' || chips === 0}
+                  aria-label="Clear bet"
                   className="flex-1 py-2.5 rounded-xl font-orbitron text-xs tracking-widest text-gray-400 border border-white/10 hover:border-white/30 transition-colors disabled:opacity-30">
                   CLEAR
                 </button>
                 <button
+                  data-testid="place-bet-button"
+                  aria-label="Place Bet"
                   onClick={handlePlaceBet}
                   disabled={phase !== 'betting' || chips === 0 || (!!table && chips < table.minBet)}
                   className="flex-1 py-2.5 rounded-xl font-orbitron font-bold text-xs tracking-widest text-black transition-all active:scale-95 disabled:opacity-30"
@@ -428,7 +458,10 @@ export default function LiveTableRoom() {
             {/* Result banner */}
             <AnimatePresence>
               {phase === 'result' && result && (
-                <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
+                <motion.div
+                  data-testid="result-banner"
+                  data-result={result.won ? 'win' : result.isPush ? 'push' : 'lose'}
+                  initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
                   className="rounded-xl px-4 py-4 text-center"
                   style={{
                     background: result.isPush ? 'rgba(255,255,255,0.08)' : result.won ? 'rgba(0,255,136,0.1)' : 'rgba(255,68,68,0.1)',

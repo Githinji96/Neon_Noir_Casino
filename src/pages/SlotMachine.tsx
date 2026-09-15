@@ -18,9 +18,10 @@ import NearMissToast from '../components/NearMissToast';
 import { useJackpotStore } from '../store/jackpotStore';
 import FreeSpinsBanner from './SlotMachine/FreeSpinsBanner';
 import WinDisplay from './SlotMachine/WinDisplay';
-import ReelGrid from './SlotMachine/ReelGrid';
 import SpinControls from './SlotMachine/SpinControls';
 import BettingControls from './SlotMachine/BettingControls';
+import GameCanvas from '../pixi/GameCanvas';
+import { useTranslation } from '../i18n/useTranslation';
 
 interface SlotMachinePageProps {
   onBack?: () => void;
@@ -30,10 +31,15 @@ export default function SlotMachinePage({ onBack }: SlotMachinePageProps) {
   const [loading, setLoading] = useState(true);
   const location = useLocation();
   const navigate = useNavigate();
-  const gameId      = (location.state as { id?: string; title?: string; jackpotMode?: boolean } | null)?.id ?? 'cyber-strike-777';
-  const gameTitle   = (location.state as { id?: string; title?: string; jackpotMode?: boolean } | null)?.title ?? 'Cyber Strike 777';
-  // Cyber Strike 777 always runs in jackpot mode (fixed KES 100 bet)
-  const jackpotMode = gameId === 'cyber-strike-777' ? true : (location.state as { id?: string; title?: string; jackpotMode?: boolean } | null)?.jackpotMode ?? false;
+  // Support ?game= query param as a fallback for direct navigation (e.g. Playwright tests).
+  // Production navigation always uses location.state from navigate('/slot', { state: {...} }).
+  const searchParams = new URLSearchParams(location.search);
+  const qpGame = searchParams.get('game');
+  const locationState = location.state as { id?: string; title?: string; jackpotMode?: boolean } | null;
+  const gameId    = locationState?.id    ?? qpGame ?? 'neon-jungle-fruits';
+  const gameTitle = locationState?.title ?? (qpGame ? qpGame.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : 'Neon Jungle Fruits');
+  // Mega Moolah Noir always runs in jackpot mode (fixed KES 100 bet)
+  const jackpotMode = gameId === 'mega-moolah-noir' ? true : locationState?.jackpotMode ?? false;
 
   // If no onBack prop (navigated directly e.g. from jackpots page), go back in history or to lobby
   const handleBack = onBack ?? (() => {
@@ -41,7 +47,6 @@ export default function SlotMachinePage({ onBack }: SlotMachinePageProps) {
     else navigate('/');
   });
 
-  const reels = useGameStore((s) => s.reels);
   const isSpinning = useGameStore((s) => s.isSpinning);
   const winResults = useGameStore((s) => s.winResults);
   const turboMode = useGameStore((s) => s.turboMode);
@@ -50,6 +55,9 @@ export default function SlotMachinePage({ onBack }: SlotMachinePageProps) {
   const isPaytableOpen = useGameStore((s) => s.isPaytableOpen);
   const soundEnabled = useGameStore((s) => s.soundEnabled);
   const musicEnabled = useSettingsStore((s) => s.settings.musicEnabled);
+  const animationSpeed = useSettingsStore((s) => s.settings.animationSpeed);
+  const autoSpinCount = useSettingsStore((s) => s.settings.autoSpinCount);
+  const stopOnWin = useSettingsStore((s) => s.settings.stopOnWin);
   const triggerFreeSpins = useGameStore((s) => s.triggerFreeSpins);
   const spin = useGameStore((s) => s.spin);
   const setSpinning = useGameStore((s) => s.setSpinning);
@@ -60,6 +68,7 @@ export default function SlotMachinePage({ onBack }: SlotMachinePageProps) {
   const { syncBalance, recordWin } = useAuthStore();
   const pendingJackpotWin = useJackpotStore((s) => s.pendingWin);
   const clearPendingWin = useJackpotStore((s) => s.clearPendingWin);
+  const t = useTranslation();
 
   const prevSpinning = useRef(false);
 
@@ -116,25 +125,32 @@ export default function SlotMachinePage({ onBack }: SlotMachinePageProps) {
   }, [isSpinning, winResults, soundEnabled]);
 
   // Sync balance + record wins to Supabase after each spin
-  // Debounced: only writes after 2s of no new spins to avoid hammering Supabase
-  // on every spin and triggering the realtime echo loop back into the store.
-  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Only sync on session boundaries (tab hidden, unmount) — not every spin.
+  // This eliminates ~3,300 writes/sec at 10K concurrent users.
+  const pendingSync = useRef(false);
+
   useEffect(() => {
     if (isSpinning) return;
+    pendingSync.current = true; // mark dirty — sync on next visibility change or unmount
+  }, [balance]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const balanceSnapshot = balance;
-    const lastWin = useGameStore.getState().lastWin;
-
-    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
-    syncTimerRef.current = setTimeout(() => {
-      syncBalance(balanceSnapshot);
+  // Sync on unmount and tab-hide
+  useEffect(() => {
+    const flush = () => {
+      if (!pendingSync.current) return;
+      pendingSync.current = false;
+      const snap = useGameStore.getState().balance;
+      const lastWin = useGameStore.getState().lastWin;
+      syncBalance(snap);
       if (lastWin > 0) recordWin(lastWin, gameTitle);
-    }, 2000);
-
-    return () => {
-      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     };
-  }, [isSpinning, balance]); // eslint-disable-line react-hooks/exhaustive-deps
+    const onHide = () => { if (document.visibilityState === 'hidden') flush(); };
+    document.addEventListener('visibilitychange', onHide);
+    return () => {
+      document.removeEventListener('visibilitychange', onHide);
+      flush(); // sync on unmount (navigation away)
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Free spins fanfare
   useEffect(() => {
@@ -148,27 +164,73 @@ export default function SlotMachinePage({ onBack }: SlotMachinePageProps) {
     return () => clearTimeout(timer);
   }, [gameId, jackpotMode]);
 
-  // Spin animation timing: set isSpinning=false after animation completes
+  // Reset spin/autoplay state on unmount so navigating away mid-spin
+  // doesn't leave the SPIN button permanently frozen when the user returns.
+  useEffect(() => {
+    return () => {
+      useGameStore.setState({ isSpinning: false, autoplay: false });
+    };
+  }, []);
+
+  // Safety fallback: if onSpinComplete never fires (e.g. unmount race or
+  // GameCanvas remount), this prevents the SPIN button freezing permanently.
+  // onSpinComplete (wired below in GameCanvas props) is the primary path
+  // and will call setSpinning(false) first — this is just insurance.
+  const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!isSpinning) return;
-    // Use ref to avoid stale closure on turboMode
-    const duration = turboRef.current ? 450 : 1600;
-    const timer = setTimeout(() => setSpinning(false), duration);
-    return () => clearTimeout(timer);
-  }, [isSpinning]);
+    // Safety margins = last-col stop time + 400ms buffer
+    // turbo:  280 + 4×80  + 400 = 1000ms
+    // fast:   700 + 4×150 + 400 = 1700ms
+    // normal: 1200 + 4×220 + 400 = 2480ms
+    // slow:   1800 + 4×300 + 400 = 3400ms
+    let safetyMs: number;
+    if (turboRef.current) {
+      safetyMs = 1000;
+    } else if (animationSpeed === 'fast') {
+      safetyMs = 1700;
+    } else if (animationSpeed === 'slow') {
+      safetyMs = 3400;
+    } else {
+      safetyMs = 2480;
+    }
+    safetyTimerRef.current = setTimeout(() => setSpinning(false), safetyMs);
+    return () => {
+      if (safetyTimerRef.current) clearTimeout(safetyTimerRef.current);
+    };
+  }, [isSpinning]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Autoplay loop: trigger next spin after current spin ends.
-  // autoplayArmed ensures we don't fire immediately on toggle — only after
-  // a spin has actually completed while autoplay is active.
+  // Autoplay loop: triggers next spin after current spin ends.
+  // Respects autoSpinCount (from settings) and stopOnWin.
   const autoplayArmed = useRef(false);
+  const autoSpinsDone = useRef(0);
   useEffect(() => {
     if (!autoplay) {
       autoplayArmed.current = false;
+      autoSpinsDone.current = 0;
       return;
     }
-    // A spin just finished while autoplay is on → fire next spin
+    // A spin just finished while autoplay is on
     if (!isSpinning && autoplayArmed.current) {
-      const delay = turboRef.current ? 80 : 500;
+      // Check stop-on-win: if last spin had wins, stop autoplay
+      if (stopOnWin && winResults.length > 0) {
+        useGameStore.setState({ autoplay: false });
+        autoplayArmed.current = false;
+        autoSpinsDone.current = 0;
+        return;
+      }
+
+      // Check spin count limit
+      autoSpinsDone.current += 1;
+      if (autoSpinsDone.current >= autoSpinCount) {
+        useGameStore.setState({ autoplay: false });
+        autoplayArmed.current = false;
+        autoSpinsDone.current = 0;
+        return;
+      }
+
+      // Fire next spin
+      const delay = turboRef.current ? 80 : animationSpeed === 'slow' ? 800 : animationSpeed === 'fast' ? 200 : 500;
       const timer = setTimeout(() => spin(), delay);
       return () => clearTimeout(timer);
     }
@@ -176,73 +238,95 @@ export default function SlotMachinePage({ onBack }: SlotMachinePageProps) {
     if (isSpinning) {
       autoplayArmed.current = true;
     }
-  }, [isSpinning, autoplay]);
+  }, [isSpinning, autoplay]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-950 flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <div className="w-16 h-16 rounded-full border-4 border-yellow-300 border-t-transparent animate-spin" />
-          <span className="font-orbitron text-yellow-300 tracking-widest text-sm">LOADING...</span>
+          <span className="font-orbitron text-yellow-300 tracking-widest text-sm">{t.loading}</span>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-950">
-      <Navbar />
+    <div className="slot-page-root bg-gray-950 flex flex-col" style={{ height: '100dvh', overflow: 'hidden' }}>
+      <Navbar compact />
 
-      <main className="max-w-2xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
-        {/* Back button */}
-        <button
-          onClick={handleBack}
-          className="mb-4 font-orbitron text-xs text-gray-400 hover:text-white tracking-widest transition-colors"
-        >
-          ← LOBBY
-        </button>
-
-        {/* Game title */}
-        <div className="flex items-center justify-center gap-2 mb-4 sm:mb-6">
-          <h1 className="font-orbitron text-xl sm:text-3xl font-bold text-yellow-300 tracking-widest text-center"
-            style={{ textShadow: '0 0 12px rgba(253,224,71,0.7)' }}>
-            {gameTitle.toUpperCase()}
-          </h1>
-          {jackpotMode && (
-            <span className="px-2 py-0.5 rounded-full font-orbitron text-xs font-bold animate-pulse shrink-0"
-              style={{ background: 'rgba(255,215,0,0.2)', border: '1px solid rgba(255,215,0,0.5)', color: '#FFD700' }}>
-              💰 JACKPOT
-            </span>
-          )}
+      <main
+        className="flex-1 min-h-0 w-full max-w-2xl mx-auto px-2 xs:px-3 sm:px-4 flex flex-col overflow-hidden"
+      >
+        {/* ── Header: ← LOBBY left, TITLE centered ── */}
+        <div className="relative flex items-center justify-center pt-1 xs:pt-2 pb-0.5 xs:pb-1.5 shrink-0">
+          <button
+            onClick={handleBack}
+            className="absolute left-0 font-orbitron text-[10px] xs:text-sm text-gray-400 hover:text-white tracking-widest transition-colors"
+          >
+            {t.slot_lobby}
+          </button>
+          <div className="flex items-center gap-1">
+            <h1
+              className="font-orbitron text-sm xs:text-base sm:text-2xl font-bold text-yellow-300 tracking-widest truncate max-w-[160px] xs:max-w-[200px] sm:max-w-none"
+              style={{ textShadow: '0 0 12px rgba(253,224,71,0.7)', fontSize: 'clamp(11px, 3.5vw, 22px)' }}
+            >
+              {gameTitle.toUpperCase()}
+            </h1>
+            {jackpotMode && (
+              <span
+                className="px-1 py-0.5 rounded-full font-orbitron text-[8px] xs:text-[9px] font-bold animate-pulse shrink-0"
+                style={{ background: 'rgba(255,215,0,0.2)', border: '1px solid rgba(255,215,0,0.5)', color: '#FFD700' }}
+              >
+                💰 JACKPOT
+              </span>
+            )}
+          </div>
         </div>
 
-        <div className="flex flex-col items-center gap-4">
-          <FreeSpinsBanner />
+        {/* ── Balance / payout panel ── */}
+        <div className="shrink-0 mt-0.5 xs:mt-1">
           <WinDisplay />
-          <ReelGrid
-            reels={reels}
-            isSpinning={isSpinning}
-            winResults={winResults}
-            turboMode={turboMode}
+        </div>
+
+        {/* ── FreeSpins banner (conditional) ── */}
+        <FreeSpinsBanner />
+
+        {/* ── Reel canvas ── */}
+        <div className="w-full flex justify-center mt-1 xs:mt-2 shrink-0">
+          <GameCanvas
+            gameId={gameId}
+            animationSpeed={animationSpeed}
+            onSpinComplete={() => {
+              // Primary path: all reels have visually stopped.
+              // Cancel the safety fallback timer then end the spin state.
+              if (safetyTimerRef.current) {
+                clearTimeout(safetyTimerRef.current);
+                safetyTimerRef.current = null;
+              }
+              setSpinning(false);
+              if (winResults.length > 0 && soundEnabled) {
+                playWinSound(winResults.length >= 3);
+              }
+            }}
           />
+        </div>
+
+        {/* ── Controls packed immediately below reels ── */}
+        <div className="flex flex-col items-center mt-1 xs:mt-2 sm:mt-3 shrink-0">
           <SpinControls />
           <BettingControls />
-
-          {/* Paytable button */}
           <button
             onClick={openPaytable}
-            className="mt-2 px-6 py-2 rounded-full font-orbitron text-xs tracking-widest border border-white/20 text-gray-400 hover:text-white hover:border-white/40 transition-colors"
+            className="px-4 xs:px-6 py-1 xs:py-1.5 rounded-full border border-white/20 text-gray-400 font-orbitron text-[10px] xs:text-xs hover:text-white hover:border-white/40 transition-colors mt-1 xs:mt-2"
           >
             PAYTABLE
           </button>
-
-          {/* No funds message */}
-          {balance === 0 && (
-            <p className="font-orbitron text-red-400 text-sm tracking-widest text-center mt-2">
-              NO FUNDS
-            </p>
-          )}
+          {balance === 0 && null}
         </div>
+
+        {/* ── Spacer — absorbs leftover height on tall screens ── */}
+        <div className="flex-1" />
       </main>
 
       <PaytableModal isOpen={isPaytableOpen} onClose={closePaytable} />

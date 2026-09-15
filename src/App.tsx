@@ -1,4 +1,4 @@
-import { useEffect, useState, Component, type ReactNode, lazy, Suspense } from 'react';
+import { useEffect, useState, Component, type ReactNode, lazy, Suspense, useRef } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation, Outlet } from 'react-router-dom';
 import CasinoLobby from './pages/CasinoLobby';
 import SlotMachinePage from './pages/SlotMachine';
@@ -6,6 +6,7 @@ import JackpotsPage from './pages/JackpotsPage';
 import LiveTablesPage from './pages/LiveTablesPage';
 import LiveTableRoom from './pages/LiveTableRoom';
 import VIPPage from './pages/VIPPage';
+import NotificationsPage from './pages/NotificationsPage';
 import LoginPage from './pages/auth/LoginPage';
 import SignUpPage from './pages/auth/SignUpPage';
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
@@ -15,9 +16,11 @@ import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 import TermsAndConditionsPage from './pages/TermsAndConditionsPage';
 import ContactPage from './pages/ContactPage';
 import { useAuthStore } from './store/authStore';
+import { useAdminStore } from './store/adminStore';
 import AdminAuthGuard from './components/admin/AdminAuthGuard';
 import MusicManager from './components/MusicManager';
 import Footer from './components/Footer';
+import BottomNav from './components/BottomNav';
 import ScrollToTop from './components/ScrollToTop';
 
 // Lazy-load admin pages to keep main bundle small
@@ -36,6 +39,8 @@ const FraudPage           = lazy(() => import('./pages/admin/FraudPage'));
 const AuditPage           = lazy(() => import('./pages/admin/AuditPage'));
 const WithdrawalsPage     = lazy(() => import('./pages/admin/WithdrawalsPage'));
 const SupportTicketsPage  = lazy(() => import('./pages/admin/SupportTicketsPage'));
+const CasinoFinancialPage = lazy(() => import('./pages/admin/CasinoFinancialPage'));
+const BetHistoryPage      = lazy(() => import('./pages/admin/BetHistoryPage'));
 
 const AdminFallback = () => (
   <div className="min-h-screen bg-gray-950 flex items-center justify-center">
@@ -48,10 +53,17 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
   static getDerivedStateFromError(error: Error) { return { error }; }
   render() {
     if (this.state.error) {
+      // Never expose stack traces or internal error messages in production
+      const isDev = import.meta.env.DEV;
       return (
         <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center gap-4 px-6 text-center">
           <p className="font-orbitron text-red-400 text-lg tracking-widest">SOMETHING WENT WRONG</p>
-          <p className="text-gray-500 text-sm font-mono">{(this.state.error as Error).message}</p>
+          {isDev && (
+            <p className="text-gray-500 text-sm font-mono">{(this.state.error as Error).message}</p>
+          )}
+          {!isDev && (
+            <p className="text-gray-500 text-sm">An unexpected error occurred. Please refresh the page.</p>
+          )}
           <button
             onClick={() => window.location.reload()}
             className="mt-4 px-6 py-2 rounded-full font-orbitron text-xs tracking-widest border border-yellow-300 text-yellow-300 hover:bg-yellow-300/10 transition-colors"
@@ -91,7 +103,7 @@ function ProtectedRoute() {
   return user ? <Outlet /> : <Navigate to="/auth/login" state={{ from: location }} replace />;
 }
 
-/** Layout wrapper that adds the Footer to all public pages */
+/** Layout wrapper that adds the Footer and mobile BottomNav to all public pages */
 function PublicLayout() {
   const location = useLocation();
   // Don't show footer inside the slot machine or live table room (immersive pages)
@@ -100,16 +112,32 @@ function PublicLayout() {
     <>
       <Outlet />
       {!noFooter && <Footer />}
+      {/* Mobile bottom navigation — renders on all public pages, hides itself on /slot */}
+      <BottomNav />
     </>
   );
 }
 
 function AppRoutes() {
   const navigate = useNavigate();
+  const location = useLocation();
   const init = useAuthStore((s) => s.init);
+  const adminInit = useAdminStore((s) => s.init);
+  const preWarmedRef = useRef(false);
 
-  // Initialise auth once on mount — admin init is handled by AdminAuthGuard
-  useEffect(() => { init(); }, []);
+  // Initialise player auth once on mount
+  useEffect(() => { init(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Pre-warm admin store as soon as the URL looks like an admin page —
+  // fires before AdminAuthGuard mounts, so the DB fetch is already in-flight
+  // when the guard checks the store, eliminating most of the visible delay.
+  useEffect(() => {
+    if (preWarmedRef.current) return;
+    if (location.pathname.startsWith('/admin') && location.pathname !== '/admin/login') {
+      preWarmedRef.current = true;
+      void adminInit();
+    }
+  }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Routes>
@@ -118,6 +146,7 @@ function AppRoutes() {
         <Route path="/" element={<CasinoLobby onNavigateToSlot={(id?: string, title?: string, jackpotMode?: boolean) => navigate('/slot', { state: { id, title, jackpotMode } })} />} />
         <Route path="/jackpots" element={<JackpotsPage />} />
         <Route path="/vip" element={<VIPPage />} />
+        <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/live-tables" element={<LiveTablesPage />} />
         <Route path="/live-tables/:tableId" element={<LiveTableRoom />} />
         <Route path="/auth/login" element={<LoginPage />} />
@@ -148,9 +177,13 @@ function AppRoutes() {
         <AdminAuthGuard requiredRoles={['super_admin','finance_admin','support_agent','game_manager']} />
       }>
         <Route element={<Suspense fallback={<AdminFallback />}><AdminLayout /></Suspense>}>
-          {/* Dashboard — super_admin, finance_admin */}
-          <Route element={<AdminAuthGuard requiredRoles={['super_admin','finance_admin']} />}>
+          {/* Dashboard — all admin roles can view the dashboard */}
+          <Route element={<AdminAuthGuard requiredRoles={['super_admin','finance_admin','support_agent','game_manager']} />}>
             <Route path="/admin/dashboard" element={<Suspense fallback={<AdminFallback />}><DashboardPage /></Suspense>} />
+          </Route>
+
+          {/* Analytics — super_admin, finance_admin, game_manager */}
+          <Route element={<AdminAuthGuard requiredRoles={['super_admin','finance_admin','game_manager']} />}>
             <Route path="/admin/analytics" element={<Suspense fallback={<AdminFallback />}><AnalyticsPage /></Suspense>} />
           </Route>
 
@@ -158,12 +191,14 @@ function AppRoutes() {
           <Route element={<AdminAuthGuard requiredRoles={['super_admin','support_agent']} />}>
             <Route path="/admin/users" element={<Suspense fallback={<AdminFallback />}><UsersPage /></Suspense>} />
             <Route path="/admin/users/:userId" element={<Suspense fallback={<AdminFallback />}><UserDetailPage /></Suspense>} />
+            <Route path="/admin/users/:userId/bet-history" element={<Suspense fallback={<AdminFallback />}><BetHistoryPage /></Suspense>} />
           </Route>
 
           {/* Finance — super_admin, finance_admin */}
           <Route element={<AdminAuthGuard requiredRoles={['super_admin','finance_admin']} />}>
             <Route path="/admin/finance" element={<Suspense fallback={<AdminFallback />}><FinancePage /></Suspense>} />
             <Route path="/admin/withdrawals" element={<Suspense fallback={<AdminFallback />}><WithdrawalsPage /></Suspense>} />
+            <Route path="/admin/casino-financial" element={<Suspense fallback={<AdminFallback />}><CasinoFinancialPage /></Suspense>} />
           </Route>
 
           {/* Games / RTP / Jackpots / Live Tables — super_admin, game_manager */}
@@ -174,8 +209,8 @@ function AppRoutes() {
             <Route path="/admin/live-tables" element={<Suspense fallback={<AdminFallback />}><LiveTablesAdminPage /></Suspense>} />
           </Route>
 
-          {/* Fraud + Audit — super_admin only */}
-          <Route element={<AdminAuthGuard requiredRoles={['super_admin']} />}>
+          {/* Fraud + Audit — super_admin + support_agent */}
+          <Route element={<AdminAuthGuard requiredRoles={['super_admin', 'support_agent']} />}>
             <Route path="/admin/fraud" element={<Suspense fallback={<AdminFallback />}><FraudPage /></Suspense>} />
             <Route path="/admin/audit" element={<Suspense fallback={<AdminFallback />}><AuditPage /></Suspense>} />
           </Route>

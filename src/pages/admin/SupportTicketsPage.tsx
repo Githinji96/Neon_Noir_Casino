@@ -5,6 +5,7 @@ import { useToast } from '../../components/admin/ToastProvider';
 import DataTable, { Column } from '../../components/admin/DataTable';
 import StatCard from '../../components/admin/StatCard';
 import LoadingSkeleton from '../../components/admin/LoadingSkeleton';
+import ConfirmModal from '../../components/admin/ConfirmModal';
 import { AnimatePresence, motion } from 'framer-motion';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -270,6 +271,7 @@ export default function SupportTicketsPage() {
   const [statusFilter, setStatusFilter] = useState<TicketStatus | 'all'>('all');
   const [priorityFilter, setPriorityFilter] = useState<TicketPriority | 'all'>('all');
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Ticket | null>(null);
 
   async function fetchTickets() {
     const { data, error } = await supabase
@@ -284,10 +286,10 @@ export default function SupportTicketsPage() {
   useEffect(() => { fetchTickets(); }, []);
 
   async function handleDelete(id: string) {
-    if (!window.confirm('Delete this ticket? This cannot be undone.')) return;
     const { error } = await supabase.from('support_tickets').delete().eq('id', id);
     if (error) { toast(error.message, 'error'); return; }
     toast('Ticket deleted.', 'info');
+    setDeleteTarget(null);
     fetchTickets();
   }
 
@@ -327,7 +329,7 @@ export default function SupportTicketsPage() {
             className="px-2 py-1 rounded bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 text-xs transition-colors">
             👁 View
           </button>
-          <button onClick={() => handleDelete(r.id)}
+          <button onClick={(e) => { e.stopPropagation(); setDeleteTarget(r); }}
             className="px-2 py-1 rounded bg-red-500/15 hover:bg-red-500/25 text-red-400 text-xs transition-colors">
             🗑
           </button>
@@ -397,6 +399,17 @@ export default function SupportTicketsPage() {
           />
         )}
       </AnimatePresence>
+
+      {/* Delete confirmation modal */}
+      <ConfirmModal
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => { if (deleteTarget) handleDelete(deleteTarget.id); }}
+        title="Delete Ticket"
+        message={`Delete ticket ${deleteTarget?.ticket_number} from ${deleteTarget?.name}? This cannot be undone.`}
+        confirmLabel="Delete"
+        danger
+      />
     </div>
   );
 }

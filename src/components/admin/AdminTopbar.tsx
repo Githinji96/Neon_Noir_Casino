@@ -1,6 +1,6 @@
-import { useNavigate } from 'react-router-dom';
 import { useAdminStore } from '../../store/adminStore';
 import type { AdminRole } from '../../store/adminStore';
+import { supabase } from '../../lib/supabase';
 
 interface AdminTopbarProps {
   title: string;
@@ -22,12 +22,20 @@ const roleLabel: Record<AdminRole, string> = {
 };
 
 export default function AdminTopbar({ title, onMenuClick }: AdminTopbarProps) {
-  const navigate = useNavigate();
-  const { adminProfile, unreadAlertCount, signOut } = useAdminStore();
+  const { adminProfile, unreadAlertCount } = useAdminStore();
 
   async function handleSignOut() {
-    await signOut();
-    navigate('/admin/login');
+    // 1. Clear client state immediately — AdminAuthGuard will reactively
+    //    render <Navigate to="/admin/login"> as soon as adminProfile is null
+    useAdminStore.setState({ adminProfile: null, alerts: [], unreadAlertCount: 0, sessionExpiresAt: null });
+    // 2. Revoke Supabase token in the background (capped at 3s)
+    void Promise.race([
+      supabase.auth.signOut(),
+      new Promise<void>((resolve) => setTimeout(resolve, 3_000)),
+    ]).then(() => {
+      // 3. Best-effort: clean up server session row
+      void Promise.resolve(supabase.rpc('end_admin_session')).catch(() => {});
+    });
   }
 
   return (

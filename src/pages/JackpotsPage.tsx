@@ -41,7 +41,7 @@ export default function JackpotsPage() {
         <ProgressiveJackpotsSection onSpinNow={handleSpinNow} />
       </main>
 
-      <BottomNav activeTab="home" onTabChange={(tab) => { if (tab === 'spin') navigate('/'); }} />
+      <BottomNav />
 
       {pendingWin && <JackpotWinModal win={pendingWin} onClose={clearPendingWin} />}
     </div>

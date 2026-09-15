@@ -2,7 +2,7 @@
 // Deploy: supabase functions deploy mpesa-callback
 // Set MPESA_CALLBACK_URL to: https://<project>.supabase.co/functions/v1/mpesa-callback
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from '@supabase/supabase-js';
 
 Deno.serve(async (req) => {
   // Safaricom always expects HTTP 200. Never return 4xx/5xx to Daraja.
@@ -35,15 +35,17 @@ Deno.serve(async (req) => {
 
       const mpesaReceipt = getMeta('MpesaReceiptNumber') as string | undefined;
       const paidAmount   = Number(getMeta('Amount') ?? 0);
+      // Always provide a receipt — use callback receipt or generate a reference
+      const receiptToSave = mpesaReceipt || `CB-${checkoutRequestId.slice(-10).toUpperCase()}`;
 
-      console.log('[mpesa-callback] Payment success. Receipt:', mpesaReceipt, 'Amount:', paidAmount);
+      console.log('[mpesa-callback] Payment success. Receipt:', receiptToSave, 'Amount:', paidAmount);
 
       // Guard against double-credit: only update if still pending
       const { data: txn, error: txnErr } = await supabase
         .from('transactions')
         .update({
           status: 'success',
-          ...(mpesaReceipt ? { mpesa_receipt: mpesaReceipt } : {}),
+          mpesa_receipt: receiptToSave,
         })
         .eq('checkout_request_id', checkoutRequestId)
         .eq('status', 'pending')    // ← idempotency guard
@@ -83,13 +85,35 @@ Deno.serve(async (req) => {
         }
       }
     } else {
-      // Payment failed or was cancelled by user
+      // Payment failed, was cancelled (1032), or reversed
       console.log(`[mpesa-callback] Payment not successful: ${resultDesc} (code ${resultCode})`);
+
+      // Mark as failed — only if still pending (don't overwrite 'success' or 'reversed')
       await supabase
         .from('transactions')
         .update({ status: 'failed' })
         .eq('checkout_request_id', checkoutRequestId)
         .eq('status', 'pending');
+
+      // Result code 2 = Mpesa system reverse — deduct if already credited
+      // Result code 17 = Limit exceeded reversal
+      if ([2, 17].includes(resultCode)) {
+        const { data: creditedTxn } = await supabase
+          .from('transactions')
+          .select('id, user_id, amount, mpesa_receipt')
+          .eq('checkout_request_id', checkoutRequestId)
+          .eq('status', 'success')
+          .single();
+
+        if (creditedTxn) {
+          console.log(`[mpesa-callback] System reversal for already-credited txn ${creditedTxn.id}, deducting KES ${creditedTxn.amount}`);
+          await supabase.rpc('process_mpesa_reversal', {
+            p_mpesa_receipt:    creditedTxn.mpesa_receipt ?? checkoutRequestId,
+            p_reversal_receipt: `AUTO-REVERSAL-${checkoutRequestId}`,
+            p_reversed_amount:  creditedTxn.amount,
+          });
+        }
+      }
     }
 
     // Always respond 200 with this exact shape — Safaricom retries if we don't

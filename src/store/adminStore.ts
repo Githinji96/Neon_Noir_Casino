@@ -61,7 +61,7 @@ export interface RTPConfig {
 
 export interface AdminAlert {
   id: string;
-  type: 'rtp_deviation' | 'large_payout' | 'fraud_flag';
+  type: 'rtp_deviation' | 'large_payout' | 'fraud_flag' | 'jackpot_win';
   severity: 'high' | 'medium' | 'low';
   message: string;
   metadata: Record<string, unknown>;
@@ -103,14 +103,25 @@ export interface JackpotPool {
 
 // ─── Store ────────────────────────────────────────────────────────────────────
 
+/** Session timeout in minutes — configurable via VITE_ADMIN_SESSION_TIMEOUT env var */
+const SESSION_TIMEOUT_MINUTES = parseInt(
+  (import.meta.env.VITE_ADMIN_SESSION_TIMEOUT as string | undefined) ?? '30',
+  10
+);
+
 interface AdminState {
   adminProfile: AdminProfile | null;
   loading: boolean;
   alerts: AdminAlert[];
   unreadAlertCount: number;
+  /** ISO string of when the admin session expires (from server) */
+  sessionExpiresAt: string | null;
 
   init: () => Promise<void>;
   signOut: () => Promise<void>;
+  startSession: () => Promise<void>;
+  checkSession: () => Promise<'valid' | 'expiring' | 'expired'>;
+  refreshSession: () => Promise<boolean>;
   subscribeToAlerts: () => () => void;
   auditLog: (entry: Omit<AuditLogEntry, 'id' | 'created_at'>) => Promise<void>;
   dismissAlert: (alertId: string) => Promise<void>;
@@ -118,34 +129,46 @@ interface AdminState {
 
 export const useAdminStore = create<AdminState>((set, get) => ({
   adminProfile: null,
-  loading: false,  // start false — guard only shows spinner when actively loading
+  loading: true,
   alerts: [],
   unreadAlertCount: 0,
+  sessionExpiresAt: null,
 
   init: async () => {
-    // Don't reset adminProfile if already set — prevents flicker redirect
+    // If profile already set (inter-page navigation), skip re-init but clear loading
     const already = get().adminProfile;
-    set({ loading: !already });
+    if (already) {
+      set({ loading: false });
+      return;
+    }
+
+    set({ loading: true });
     try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError) {
-        console.error('[adminStore.init] getUser error:', userError.message);
-        set({ adminProfile: null, loading: false });
-        return;
-      }
+      // Use getSession() (reads localStorage cache — no network round-trip)
+      // Only fall back to getUser() if session is missing.
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user ?? null;
+
       if (!user) {
         set({ adminProfile: null, loading: false });
         return;
       }
 
+      // Fetch profile + alerts in parallel to halve the wait time
       const profilePromise = supabase
         .from('profiles')
         .select('id, username, admin_role')
         .eq('id', user.id)
         .single();
 
+      const alertsPromise = supabase
+        .from('admin_alerts')
+        .select('*')
+        .eq('resolved', false)
+        .order('created_at', { ascending: false });
+
       const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Profile fetch timeout')), 10000)
+        setTimeout(() => reject(new Error('Profile fetch timeout')), 5000)
       );
 
       let profile: { id: string; username: string; admin_role: string } | null = null;
@@ -157,9 +180,6 @@ export const useAdminStore = create<AdminState>((set, get) => ({
         profileError = result.error as { message: string; code: string } | null;
         if (profileError) {
           console.error('[adminStore.init] profile query error:', profileError.code, profileError.message);
-        }
-        if (!profile && !profileError) {
-          console.warn('[adminStore.init] profile query returned null data with no error — RLS likely blocking the row');
         }
       } catch (e) {
         profileError = { message: String(e), code: 'TIMEOUT' };
@@ -184,6 +204,7 @@ export const useAdminStore = create<AdminState>((set, get) => ({
         return;
       }
 
+      // Set profile immediately — don't wait for alerts
       set({
         adminProfile: {
           id: profile.id,
@@ -193,16 +214,13 @@ export const useAdminStore = create<AdminState>((set, get) => ({
         loading: false,
       });
 
-      // Load initial alerts
-      const { data: alerts } = await supabase
-        .from('admin_alerts')
-        .select('*')
-        .eq('resolved', false)
-        .order('created_at', { ascending: false });
+      // Resolve alerts in background (already in-flight from the parallel fetch)
+      void alertsPromise.then(({ data: alerts }) => {
+        if (alerts) {
+          set({ alerts: alerts as AdminAlert[], unreadAlertCount: alerts.length });
+        }
+      });
 
-      if (alerts) {
-        set({ alerts: alerts as AdminAlert[], unreadAlertCount: alerts.length });
-      }
     } catch (err) {
       console.error('[adminStore.init] unexpected error:', err);
       set({ adminProfile: null, loading: false });
@@ -210,8 +228,81 @@ export const useAdminStore = create<AdminState>((set, get) => ({
   },
 
   signOut: async () => {
-    await supabase.auth.signOut();
-    set({ adminProfile: null, alerts: [], unreadAlertCount: 0 });
+    // Clear client state immediately — never block on network calls
+    set({ adminProfile: null, alerts: [], unreadAlertCount: 0, sessionExpiresAt: null });
+    // Fire-and-forget: end server session and revoke Supabase token
+    // Both are best-effort — a 3s timeout prevents hanging
+    const cleanup = async () => {
+      await Promise.resolve(supabase.rpc('end_admin_session')).catch(() => {});
+      await Promise.race([
+        supabase.auth.signOut(),
+        new Promise<void>((resolve) => setTimeout(resolve, 3_000)),
+      ]);
+    };
+    void cleanup();
+  },
+
+  startSession: async () => {
+    try {
+      const { data, error } = await supabase.rpc('start_admin_session', {
+        p_timeout_minutes: SESSION_TIMEOUT_MINUTES,
+      });
+      if (!error && data?.expiresAt) {
+        set({ sessionExpiresAt: data.expiresAt });
+      }
+      // If RPC fails (migration not yet run), log but don't block login
+      if (error) console.warn('[adminStore] start_admin_session RPC unavailable:', error.message);
+    } catch (err) {
+      console.warn('[adminStore] startSession failed:', err);
+    }
+  },
+
+  checkSession: async () => {
+    try {
+      const { data, error } = await supabase.rpc('check_admin_session');
+
+      // RPC infrastructure error (not deployed, network issue) — treat as valid
+      // so a deployment gap doesn't boot all admins. Log for visibility.
+      if (error) {
+        console.warn('[adminStore] check_admin_session RPC unavailable:', error.message);
+        return 'valid';
+      }
+
+      if (!data?.valid) {
+        // Server explicitly says session is invalid/expired
+        const reason = data?.reason ?? 'unknown';
+        console.info('[adminStore] session invalid:', reason);
+        await supabase.auth.signOut();
+        set({ adminProfile: null, alerts: [], unreadAlertCount: 0, sessionExpiresAt: null });
+        return 'expired';
+      }
+
+      set({ sessionExpiresAt: data.expiresAt });
+      if (data.secondsRemaining <= 300) return 'expiring';
+      return 'valid';
+    } catch (err) {
+      // Network/unexpected error — don't log out, just treat as valid
+      console.warn('[adminStore] checkSession error (treating as valid):', err);
+      return 'valid';
+    }
+  },
+
+  refreshSession: async () => {
+    try {
+      const { data, error } = await supabase.rpc('refresh_admin_session', {
+        p_timeout_minutes: SESSION_TIMEOUT_MINUTES,
+      });
+      if (error) {
+        console.warn('[adminStore] refresh_admin_session RPC unavailable:', error.message);
+        return true; // Don't force logout on RPC failure
+      }
+      if (!data?.success) return false;
+      set({ sessionExpiresAt: data.expiresAt });
+      return true;
+    } catch (err) {
+      console.warn('[adminStore] refreshSession error:', err);
+      return true; // Don't force logout on network error
+    }
   },
 
   subscribeToAlerts: () => {

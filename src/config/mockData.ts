@@ -25,16 +25,16 @@ export interface PopularGame {
 
 // IDs of games linked to progressive jackpots — only accessible from jackpot section
 export const JACKPOT_GAME_IDS = new Set([
-  'cyber-strike-777',
+  'mega-moolah-noir',   // Mega Jackpot — fixed KES 100 bet
   'electric-storm',
   'quantum-vault',
   'dark-matter-reels',
   'neon-samurai',
 ]);
 
-// IDs of popular choice games — exclude from near-miss notifications
+// IDs of popular choice games shown in the Popular Choices section
 export const POPULAR_GAME_IDS = new Set([
-  'cyber-strike-777',
+  'cyber-strike-777',   // now a normal slot
   'neon-samurai',
   'dark-matter-reels',
   'quantum-vault',
@@ -42,28 +42,30 @@ export const POPULAR_GAME_IDS = new Set([
 ]);
 
 export const GAME_LISTINGS: GameListing[] = [
-  { id: 'cyber-strike-777',   title: 'Cyber Strike 777',   thumbnail: 'https://picsum.photos/seed/game1/300/200', badge: 'HOT', rtp: 96.5, volatility: 'High',   isJackpotGame: true },
-  { id: 'neon-jungle-fruits', title: 'Neon Jungle Fruits', thumbnail: 'https://picsum.photos/seed/game2/300/200', badge: 'NEW', rtp: 95.2, volatility: 'Medium' },
-  { id: 'dark-matter-reels',  title: 'Dark Matter Reels',  thumbnail: 'https://picsum.photos/seed/game3/300/200', badge: 'HOT', rtp: 97.0, volatility: 'High',   isJackpotGame: true },
-  { id: 'quantum-vault',      title: 'Quantum Vault',      thumbnail: 'https://picsum.photos/seed/game4/300/200', badge: 'NEW', rtp: 94.8, volatility: 'Low',    isJackpotGame: true },
-  { id: 'neon-samurai',       title: 'Neon Samurai',       thumbnail: 'https://picsum.photos/seed/game5/300/200', badge: 'HOT', rtp: 96.1, volatility: 'Medium', isJackpotGame: true },
-  { id: 'electric-storm',     title: 'Electric Storm',     thumbnail: 'https://picsum.photos/seed/game6/300/200', badge: 'NEW', rtp: 95.7, volatility: 'High',   isJackpotGame: true },
+  { id: 'mega-moolah-noir',   title: 'Mega Moolah Noir',   thumbnail: 'https://picsum.photos/id/1062/400/225', badge: 'HOT', rtp: 96.5, volatility: 'High', isJackpotGame: true },
+  { id: 'cyber-strike-777',   title: 'Cyber Strike 777',   thumbnail: 'https://picsum.photos/id/1038/400/225', badge: 'HOT', rtp: 96.5, volatility: 'High'   },
+  { id: 'neon-jungle-fruits', title: 'Neon Jungle Fruits', thumbnail: 'https://picsum.photos/id/1043/400/225', badge: 'NEW', rtp: 95.2, volatility: 'Medium' },
+  { id: 'dark-matter-reels',  title: 'Dark Matter Reels',  thumbnail: 'https://picsum.photos/id/1022/400/225', badge: 'HOT', rtp: 97.0, volatility: 'High',   isJackpotGame: true },
+  { id: 'quantum-vault',      title: 'Quantum Vault',      thumbnail: 'https://picsum.photos/id/1036/400/225', badge: 'NEW', rtp: 94.8, volatility: 'Low',    isJackpotGame: true },
+  { id: 'neon-samurai',       title: 'Neon Samurai',       thumbnail: 'https://picsum.photos/id/1011/400/225', badge: 'HOT', rtp: 96.1, volatility: 'Medium', isJackpotGame: true },
+  { id: 'electric-storm',     title: 'Electric Storm',     thumbnail: 'https://picsum.photos/id/1015/400/225', badge: 'NEW', rtp: 95.7, volatility: 'High',   isJackpotGame: true },
   // Pure slot games — shown in New Arrivals only, no jackpot attached
-  { id: 'neon-jungle-fruits', title: 'Neon Jungle Fruits', thumbnail: 'https://picsum.photos/seed/game2/300/200', badge: 'NEW', rtp: 95.2, volatility: 'Medium' },
-  { id: 'crystal-grid',       title: 'Crystal Grid',       thumbnail: 'https://picsum.photos/seed/slot7/300/200', badge: 'NEW', rtp: 95.0, volatility: 'Low'    },
-  { id: 'solar-flare',        title: 'Solar Flare',        thumbnail: 'https://picsum.photos/seed/slot8/300/200', badge: 'HOT', rtp: 96.0, volatility: 'Medium' },
-  { id: 'midnight-heist',     title: 'Midnight Heist',     thumbnail: 'https://picsum.photos/seed/slot9/300/200', badge: 'NEW', rtp: 94.5, volatility: 'High'   },
-  { id: 'ocean-depths',       title: 'Ocean Depths',       thumbnail: 'https://picsum.photos/seed/slot10/300/200',badge: 'HOT', rtp: 95.8, volatility: 'Medium' },
-  { id: 'dragon-forge',       title: 'Dragon Forge',       thumbnail: 'https://picsum.photos/seed/slot11/300/200',badge: 'NEW', rtp: 96.2, volatility: 'High'   },
+  // Using specific picsum photo IDs (not seeds) — guaranteed landscape images
+  { id: 'neon-jungle-fruits', title: 'Neon Jungle Fruits', thumbnail: 'https://picsum.photos/id/1043/400/225', badge: 'NEW', rtp: 95.2, volatility: 'Medium' },
+  { id: 'crystal-grid',       title: 'Crystal Grid',       thumbnail: 'https://picsum.photos/id/1018/400/225', badge: 'NEW', rtp: 95.0, volatility: 'Low'    },
+  { id: 'solar-flare',        title: 'Solar Flare',        thumbnail: 'https://picsum.photos/id/1053/400/225', badge: 'HOT', rtp: 96.0, volatility: 'Medium' },
+  { id: 'midnight-heist',     title: 'Midnight Heist',     thumbnail: 'https://picsum.photos/id/1040/400/225', badge: 'NEW', rtp: 94.5, volatility: 'High'   },
+  { id: 'ocean-depths',       title: 'Ocean Depths',       thumbnail: 'https://picsum.photos/id/1025/400/225', badge: 'HOT', rtp: 95.8, volatility: 'Medium' },
+  { id: 'dragon-forge',       title: 'Dragon Forge',       thumbnail: 'https://picsum.photos/id/1060/400/225', badge: 'NEW', rtp: 96.2, volatility: 'High'   },
 ];
 
-// Pure slots shown in New Arrivals — no jackpot
-// New arrivals: exclude any game marked as a jackpot and ensure unique IDs
+// Pure slots shown in New Arrivals — no jackpot, not already featured in Popular Choices
 export const NEW_ARRIVAL_GAMES: GameListing[] = (() => {
   const seen = new Set<string>();
   return GAME_LISTINGS.filter((g) => {
     if (g.isJackpotGame) return false;
     if (JACKPOT_GAME_IDS.has(g.id)) return false;
+    if (POPULAR_GAME_IDS.has(g.id)) return false;  // already shown in Popular Choices
     if (seen.has(g.id)) return false;
     seen.add(g.id);
     return true;
