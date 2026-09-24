@@ -2,6 +2,11 @@ import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
 import { hasRequiredAdminRole, normalizeAdminRole } from '../components/admin/adminAccess';
 
+// Prevents concurrent signOut calls from racing over the Supabase Web Lock.
+// Multiple paths can trigger signOut simultaneously (inactivity timer, session
+// poll, user click) — the second one would get AbortError: "Lock broken".
+let _signOutInFlight = false;
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type AdminRole = 'super_admin' | 'finance_admin' | 'support_agent' | 'game_manager';
@@ -163,7 +168,7 @@ export const useAdminStore = create<AdminState>((set, get) => ({
 
       const alertsPromise = supabase
         .from('admin_alerts')
-        .select('*')
+        .select('id, type, severity, message, metadata, resolved, created_at')
         .eq('resolved', false)
         .order('created_at', { ascending: false });
 
@@ -228,18 +233,30 @@ export const useAdminStore = create<AdminState>((set, get) => ({
   },
 
   signOut: async () => {
-    // Clear client state immediately — never block on network calls
+    // Dedup: if a signOut is already in-flight, don't start another one.
+    // Multiple paths (inactivity timer, session poll, user click, handleExpired)
+    // can fire concurrently — the second concurrent call would get
+    // AbortError: "Lock broken by another request with the 'steal' option".
+    if (_signOutInFlight) return;
+    _signOutInFlight = true;
+
+    // Clear client state immediately so the UI reacts without waiting for network
     set({ adminProfile: null, alerts: [], unreadAlertCount: 0, sessionExpiresAt: null });
-    // Fire-and-forget: end server session and revoke Supabase token
-    // Both are best-effort — a 3s timeout prevents hanging
-    const cleanup = async () => {
-      await Promise.resolve(supabase.rpc('end_admin_session')).catch(() => {});
+
+    try {
+      // Best-effort cleanup — cap at 3s so a slow network doesn't block navigation
       await Promise.race([
-        supabase.auth.signOut(),
+        (async () => {
+          void supabase.rpc('end_admin_session');
+          await supabase.auth.signOut();
+        })(),
         new Promise<void>((resolve) => setTimeout(resolve, 3_000)),
       ]);
-    };
-    void cleanup();
+    } catch {
+      // Ignore — state is already cleared above
+    } finally {
+      _signOutInFlight = false;
+    }
   },
 
   startSession: async () => {
@@ -269,11 +286,11 @@ export const useAdminStore = create<AdminState>((set, get) => ({
       }
 
       if (!data?.valid) {
-        // Server explicitly says session is invalid/expired
+        // Server explicitly says session is invalid/expired — use the store's
+        // guarded signOut so concurrent expiry detections don't race each other.
         const reason = data?.reason ?? 'unknown';
         console.info('[adminStore] session invalid:', reason);
-        await supabase.auth.signOut();
-        set({ adminProfile: null, alerts: [], unreadAlertCount: 0, sessionExpiresAt: null });
+        await get().signOut();
         return 'expired';
       }
 
@@ -310,12 +327,25 @@ export const useAdminStore = create<AdminState>((set, get) => ({
       .channel('admin_alerts_realtime')
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'admin_alerts' },
+        { event: 'INSERT', schema: 'public', table: 'admin_alerts' },
+        (payload) => {
+          // Use payload directly for INSERT — no refetch needed
+          const newAlert = payload.new as AdminAlert;
+          if (newAlert.resolved) return; // skip pre-resolved alerts
+          set((s) => {
+            const alerts = [newAlert, ...s.alerts];
+            return { alerts, unreadAlertCount: alerts.length };
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'admin_alerts' },
         () => {
-          // Re-fetch unresolved alerts on any change
+          // For UPDATE (e.g. resolve), refetch unresolved list
           supabase
             .from('admin_alerts')
-            .select('*')
+            .select('id, type, severity, message, metadata, resolved, created_at')
             .eq('resolved', false)
             .order('created_at', { ascending: false })
             .then(({ data }) => {

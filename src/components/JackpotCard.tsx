@@ -2,6 +2,7 @@ import { motion } from 'framer-motion';
 
 interface JackpotCardProps {
   name: string;
+  gameTitle: string;
   amount: number;
   tags: string[];
   state?: 'BUILDING' | 'ACTIVE' | 'WON';
@@ -33,6 +34,7 @@ export default function JackpotCard({ name, amount, tags, onSpinNow }: JackpotCa
         boxShadow: '0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06)',
       }}
     >
+      {/* Jackpot / game name */}
       <h3 className="font-orbitron font-bold text-white text-sm tracking-wide leading-tight">{name}</h3>
 
       <motion.p

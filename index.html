@@ -10,7 +10,9 @@
     <!--
       Content Security Policy
       - default-src 'self': only load resources from the same origin by default
-      - script-src 'self': no inline scripts (Vite bundles everything)
+      - script-src 'self' 'unsafe-inline' 'unsafe-eval': required for Vite dev HMR preamble
+        (Vite injects inline module scripts for React Fast Refresh; 'unsafe-eval' is needed
+        for source-map support in dev. In production, tighten this to 'self' only or use nonces.)
       - style-src 'self' 'unsafe-inline': Tailwind/framer-motion inject inline styles
       - img-src 'self' data: https://picsum.photos: game thumbnails
       - connect-src 'self' https://*.supabase.co wss://*.supabase.co: Supabase API + Realtime
@@ -19,7 +21,7 @@
     -->
     <meta http-equiv="Content-Security-Policy" content="
       default-src 'self';
-      script-src 'self';
+      script-src 'self' 'unsafe-inline' 'unsafe-eval';
       style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
       img-src 'self' data: https://picsum.photos https://fastly.picsum.photos https://*.picsum.photos blob:;
       connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.jamendo.com https://*.jamendo.com;

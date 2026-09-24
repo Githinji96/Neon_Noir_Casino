@@ -44,6 +44,7 @@ interface JackpotState {
   clearPendingWin: () => void;
   clearGlobalWinEvent: () => void;
   syncFromSupabase: () => Promise<void>;
+  subscribeToConfigChanges: () => () => void;
   startRealTimeGrowth: () => () => void;
   subscribeToWinBroadcasts: () => () => void;
   refreshDisplayAmounts: () => void;
@@ -152,20 +153,58 @@ export const useJackpotStore = create<JackpotState>((set) => ({
   refreshDisplayAmounts: () => set({ jackpots: buildDisplayList() }),
 
   syncFromSupabase: async () => {
+    if (_syncInFlight) return;
+    _syncInFlight = true;
     try {
-      const { data } = await supabase.from('jackpots').select('id, current_amount');
+      const { data } = await supabase
+        .from('jackpots')
+        .select('id, name, type, current_amount, locked, base_amount, contribution_rate, trigger_probability');
       if (!data?.length) return;
+
+      // Single source of truth: DB rows drive the engine config.
+      // seedConfigs updates existing jackpots AND registers new DB rows
+      // that aren't in the hardcoded fallback list — fully dynamic.
+      jackpotEngine.seedConfigs(data.map((row) => ({
+        id:                  row.id,
+        name:                row.name,
+        type:                row.type,
+        base_amount:         row.base_amount,
+        contribution_rate:   row.contribution_rate,
+        trigger_probability: row.trigger_probability,
+      })));
+
       const amounts: Record<string, number> = {};
-      for (const row of data) amounts[row.id] = row.current_amount;
+      for (const row of data) {
+        amounts[row.id] = row.current_amount;
+        const currentMode = jackpotEngine.getOverride(row.id)?.mode;
+        if (row.locked && currentMode !== 'locked') {
+          jackpotEngine.setMode(row.id, 'locked');
+        } else if (!row.locked && currentMode === 'locked') {
+          jackpotEngine.setMode(row.id, 'auto');
+        }
+      }
       jackpotEngine.seedAmounts(amounts);
       set({ jackpots: buildDisplayList() });
     } catch {
       // Silently fail — local engine state is fine
+    } finally {
+      _syncInFlight = false;
     }
   },
 
+  // Subscribe to admin config changes on the jackpots table.
+  // Fires syncFromSupabase() whenever an admin edits base_amount,
+  // contribution_rate, trigger_probability, locked, or name — so
+  // all connected casino UIs pick up the change within seconds.
+  // subscribeToConfigChanges is kept for interface compatibility but is a no-op:
+  // the module-level _initJackpotConfigSync already sets up the single authoritative
+  // Realtime subscription on 'jackpot-config-live'. Creating a second subscription
+  // here would cause every admin edit to trigger syncFromSupabase() twice.
+  subscribeToConfigChanges: () => {
+    return () => {}; // cleanup no-op
+  },
+
   startRealTimeGrowth: () => {
-    // Use 1000ms ticks instead of 120ms — 8×/sec was thrashing React renders
     const interval = setInterval(() => {
       jackpotEngine.applyGrowthTick();
       set({ jackpots: buildDisplayList() });
@@ -187,3 +226,37 @@ export const useJackpotStore = create<JackpotState>((set) => ({
     return () => { supabase.removeChannel(channel); };
   },
 }));
+
+// ── Module-level config sync ──────────────────────────────────────────────────
+// Run once when this module first loads. Sets up:
+//   1. Immediate sync from DB (picks up any admin edits that happened while offline)
+//   2. Supabase Realtime subscription for instant updates when admin edits jackpots
+//   3. 60s polling fallback (covers edge cases where Realtime event is missed)
+//
+// Using module-level init instead of React useEffect avoids StrictMode double-invoke
+// tearing down the subscription before it can receive events.
+
+let _syncInFlight = false;
+
+function _initJackpotConfigSync() {
+  const store = useJackpotStore;
+
+  // 1. Immediate sync
+  store.getState().syncFromSupabase();
+
+  // 2. Realtime — fires on every UPDATE to the jackpots table
+  supabase
+    .channel('jackpot-config-live')
+    .on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'jackpots' },
+      () => { store.getState().syncFromSupabase(); }
+    )
+    .subscribe();
+
+  // 3. Polling fallback every 60s (Realtime covers most updates)
+  setInterval(() => { store.getState().syncFromSupabase(); }, 60_000);
+}
+
+// Defer slightly so the Supabase client is fully initialised before subscribing
+setTimeout(_initJackpotConfigSync, 500);

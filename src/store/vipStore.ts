@@ -98,12 +98,33 @@ export const useVIPStore = create<VIPState>()(
       loadVIP: async (userId) => {
         set({ loading: true });
         try {
-          // ── VIP row ────────────────────────────────────────────────────
-          const { data: vipData, error: vipErr } = await supabase
-            .from('vip_users')
-            .select('*')
-            .eq('user_id', userId)
-            .single();
+          const { weekStart } = getCurrentEATWeekBounds();
+
+          // Run all 3 queries in parallel
+          const [vipResult, currentWCResult, historyResult] = await Promise.all([
+            supabase
+              .from('vip_users')
+              .select('*')
+              .eq('user_id', userId)
+              .single(),
+            supabase
+              .from('weekly_cashbacks')
+              .select('*')
+              .eq('user_id', userId)
+              .eq('week_start', weekStart.toISOString())
+              .maybeSingle(),
+            supabase
+              .from('weekly_cashbacks')
+              .select('*')
+              .eq('user_id', userId)
+              .neq('week_start', weekStart.toISOString())
+              .order('week_start', { ascending: false })
+              .limit(10),
+          ]);
+
+          const { data: vipData, error: vipErr } = vipResult;
+          const { data: currentWC } = currentWCResult;
+          const { data: history } = historyResult;
 
           if (vipData) {
             const tier = getTierForPoints(vipData.total_points ?? 0);
@@ -121,30 +142,8 @@ export const useVIPStore = create<VIPState>()(
             });
           }
 
-          // ── Current week cashback ──────────────────────────────────────
-          const { weekStart } = getCurrentEATWeekBounds();
-
-          const { data: currentWC } = await supabase
-            .from('weekly_cashbacks')
-            .select('*')
-            .eq('user_id', userId)
-            .eq('week_start', weekStart.toISOString())
-            .maybeSingle();
-
           set({
             currentWeekCashback: currentWC ? rowToWeeklyCashback(currentWC as Record<string, unknown>) : null,
-          });
-
-          // ── History (last 10 weeks, exclude current) ───────────────────
-          const { data: history } = await supabase
-            .from('weekly_cashbacks')
-            .select('*')
-            .eq('user_id', userId)
-            .neq('week_start', weekStart.toISOString())
-            .order('week_start', { ascending: false })
-            .limit(10);
-
-          set({
             cashbackHistory: (history ?? []).map((r) =>
               rowToWeeklyCashback(r as Record<string, unknown>)
             ),

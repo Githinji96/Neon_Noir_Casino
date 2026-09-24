@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Navigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import BottomNav from '../components/BottomNav';
 import WeeklyCashbackCard from '../components/WeeklyCashbackCard';
@@ -42,20 +42,13 @@ export default function VIPPage() {
     // Load leaderboard
     supabase
       .from('vip_users')
-      .select('user_id, level, total_points')
+      .select('user_id, level, total_points, profiles(username)')
       .order('total_points', { ascending: false })
       .limit(10)
-      .then(async ({ data }) => {
+      .then(({ data }) => {
         if (!data?.length) return;
-        const ids = data.map((r) => r.user_id);
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, username')
-          .in('id', ids);
-        const usernameMap: Record<string, string> = {};
-        profiles?.forEach((p) => { usernameMap[p.id] = p.username; });
-        setLeaderboard(data.map((r) => ({
-          username: usernameMap[r.user_id] ?? 'Player',
+        setLeaderboard(data.map((r: any) => ({
+          username: (Array.isArray(r.profiles) ? r.profiles[0]?.username : r.profiles?.username) ?? 'Player',
           level: r.level,
           total_points: r.total_points,
         })));
@@ -76,10 +69,8 @@ export default function VIPPage() {
     );
   }
 
-  // Confirmed signed out — redirect immediately (synchronous, no flicker)
-  if (!user) {
-    return <Navigate to="/auth/login" replace state={{ from: { pathname: '/vip' } }} />;
-  }
+  // Not logged in — show the page in guest mode (tier info + sign-in prompt)
+  // instead of redirecting, so visitors can browse what VIP has to offer.
 
   return (
     <div className="relative bg-black min-h-screen">

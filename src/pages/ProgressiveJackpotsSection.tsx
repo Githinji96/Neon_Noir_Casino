@@ -11,12 +11,11 @@ export default function ProgressiveJackpotsSection({ onSpinNow }: ProgressiveJac
   const jackpots = useJackpotStore((s) => s.jackpots);
   const recentWinner = useJackpotStore((s) => s.recentWinner);
   const startRealTimeGrowth = useJackpotStore((s) => s.startRealTimeGrowth);
-  const syncFromSupabase = useJackpotStore((s) => s.syncFromSupabase);
 
   useEffect(() => {
-    syncFromSupabase();
-    const stop = startRealTimeGrowth();
-    return stop;
+    // Growth ticker uses amounts already synced by jackpotStore module-level init
+    const stopGrowth = startRealTimeGrowth();
+    return stopGrowth;
   }, []);
 
   return (
@@ -54,12 +53,13 @@ export default function ProgressiveJackpotsSection({ onSpinNow }: ProgressiveJac
           <JackpotCard
             key={jackpot.id}
             name={jackpot.name}
+            gameTitle={jackpot.gameTitle}
             amount={jackpot.currentAmount}
             tags={jackpot.tags}
             state={jackpot.state}
             progressPct={jackpot.progressPct}
             minimumThreshold={jackpot.minimumThreshold}
-            onSpinNow={() => onSpinNow(jackpot.gameId, jackpot.gameTitle)}
+            onSpinNow={() => onSpinNow(jackpot.gameId, jackpot.name)}
           />
         ))}
       </div>

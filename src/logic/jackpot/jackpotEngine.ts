@@ -8,7 +8,7 @@
  *   const result = jackpotEngine.processSpin({ betAmount, consecutiveLosses, sessionRTP, totalSessionBet, userId });
  */
 
-import { JACKPOT_CONFIGS, type JackpotConfig } from './jackpotConfig';
+import { JACKPOT_CONFIGS, buildConfigFromDB, type JackpotConfig } from './jackpotConfig';
 import { calculateContributions } from './contributionManager';
 import { computeTriggerProbability, rollTrigger } from './triggerEngine';
 import { attemptPayout, isLocked } from './payoutManager';
@@ -235,6 +235,62 @@ export const jackpotEngine = {
     for (const [id, amount] of Object.entries(amounts)) {
       const state = _runtimeState.get(id);
       if (state) state.currentAmount = amount;
+    }
+  },
+
+  /**
+   * Apply DB row data into the live engine — the single source of truth.
+   *
+   * For each DB row passed:
+   * - If the jackpot already exists in JACKPOT_CONFIGS (hardcoded or previously registered),
+   *   update its mutable fields (name, seedAmount, contributionRate, baseProbability).
+   * - If the jackpot does NOT exist yet (new row added to DB), register it dynamically
+   *   so it participates in contributions and triggers without any code change.
+   *
+   * This makes the system fully dynamic: any row in the `jackpots` DB table is
+   * automatically supported — no hardcoded game list required.
+   */
+  seedConfigs(rows: Array<{
+    id: string;
+    name: string;
+    type?: string;
+    base_amount: number;
+    contribution_rate: number;
+    trigger_probability: number;
+  }>): void {
+    for (const row of rows) {
+      const existing = JACKPOT_CONFIGS.find((c) => c.id === row.id);
+
+      if (existing) {
+        // Update mutable fields from DB — these are the admin-editable values
+        existing.name             = row.name;
+        existing.seedAmount       = row.base_amount;
+        existing.baseAmount       = row.base_amount;
+        existing.contributionRate = row.contribution_rate;
+        existing.baseProbability  = row.trigger_probability;
+      } else {
+        // New jackpot found in DB that isn't in the hardcoded list — register it
+        const newCfg = buildConfigFromDB(row);
+        JACKPOT_CONFIGS.push(newCfg);
+
+        // Also initialise engine state for it
+        if (!_runtimeState.has(newCfg.id)) {
+          _runtimeState.set(newCfg.id, {
+            id: newCfg.id,
+            currentAmount: newCfg.seedAmount,
+            lastWinTimestamp: 0,
+            lastResetTimestamp: Date.now(),
+          });
+        }
+        if (!_adminOverrides.has(newCfg.id)) {
+          _adminOverrides.set(newCfg.id, {
+            mode: 'auto',
+            forceTriggerNext: false,
+            scheduledTriggerAt: 0,
+            minAmountThreshold: 0,
+          });
+        }
+      }
     }
   },
 

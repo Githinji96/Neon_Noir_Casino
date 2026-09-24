@@ -13,6 +13,7 @@ export default function AuthAlert({ type, message }: AuthAlertProps) {
   return (
     <AnimatePresence>
       <motion.div
+        role="alert"
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -8 }}

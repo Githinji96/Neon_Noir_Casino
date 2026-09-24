@@ -53,6 +53,7 @@ export type Profile = {
   balance: number;
   phone?: string;
   phone_verified?: boolean;
+  account_status?: string;
   updated_at: string;
 };
 

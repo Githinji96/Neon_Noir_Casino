@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { LoginPage as LoginPageObject } from './pages/LoginPage';
-import { TEST_CREDENTIALS, fillLoginForm, submitLoginForm } from './helpers/authHelpers';
+import { fillLoginForm, submitLoginForm } from './helpers/authHelpers';
 import { waitForPageReady } from './helpers/waitHelpers';
 
 test.describe('Authentication — Login Page', () => {

@@ -3,6 +3,6 @@
     "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2"
   },
   "compilerOptions": {
-    "lib": ["deno.window"]
+    "lib": ["deno.window", "deno.ns", "dom", "esnext"]
   }
 }

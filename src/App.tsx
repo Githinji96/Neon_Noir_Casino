@@ -1,20 +1,6 @@
 import { useEffect, useState, Component, type ReactNode, lazy, Suspense, useRef } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation, Outlet } from 'react-router-dom';
 import CasinoLobby from './pages/CasinoLobby';
-import SlotMachinePage from './pages/SlotMachine';
-import JackpotsPage from './pages/JackpotsPage';
-import LiveTablesPage from './pages/LiveTablesPage';
-import LiveTableRoom from './pages/LiveTableRoom';
-import VIPPage from './pages/VIPPage';
-import NotificationsPage from './pages/NotificationsPage';
-import LoginPage from './pages/auth/LoginPage';
-import SignUpPage from './pages/auth/SignUpPage';
-import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
-import ResetPasswordPage from './pages/auth/ResetPasswordPage';
-import AuthCallbackPage from './pages/auth/AuthCallbackPage';
-import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
-import TermsAndConditionsPage from './pages/TermsAndConditionsPage';
-import ContactPage from './pages/ContactPage';
 import { useAuthStore } from './store/authStore';
 import { useAdminStore } from './store/adminStore';
 import AdminAuthGuard from './components/admin/AdminAuthGuard';
@@ -23,7 +9,24 @@ import Footer from './components/Footer';
 import BottomNav from './components/BottomNav';
 import ScrollToTop from './components/ScrollToTop';
 
-// Lazy-load admin pages to keep main bundle small
+// ── Lazy-load every page that isn't the landing (CasinoLobby) ────────────────
+// This keeps the initial bundle small — pages only load when the user navigates.
+const SlotMachinePage        = lazy(() => import('./pages/SlotMachine'));
+const JackpotsPage           = lazy(() => import('./pages/JackpotsPage'));
+const LiveTablesPage         = lazy(() => import('./pages/LiveTablesPage'));
+const LiveTableRoom          = lazy(() => import('./pages/LiveTableRoom'));
+const VIPPage                = lazy(() => import('./pages/VIPPage'));
+const NotificationsPage      = lazy(() => import('./pages/NotificationsPage'));
+const LoginPage              = lazy(() => import('./pages/auth/LoginPage'));
+const SignUpPage             = lazy(() => import('./pages/auth/SignUpPage'));
+const ForgotPasswordPage     = lazy(() => import('./pages/auth/ForgotPasswordPage'));
+const ResetPasswordPage      = lazy(() => import('./pages/auth/ResetPasswordPage'));
+const AuthCallbackPage       = lazy(() => import('./pages/auth/AuthCallbackPage'));
+const PrivacyPolicyPage      = lazy(() => import('./pages/PrivacyPolicyPage'));
+const TermsAndConditionsPage = lazy(() => import('./pages/TermsAndConditionsPage'));
+const ContactPage            = lazy(() => import('./pages/ContactPage'));
+
+// ── Admin pages (already lazy) ────────────────────────────────────────────────
 const AdminLoginPage      = lazy(() => import('./pages/admin/AdminLoginPage'));
 const AdminLayout         = lazy(() => import('./components/admin/AdminLayout'));
 const DashboardPage       = lazy(() => import('./pages/admin/DashboardPage'));
@@ -42,7 +45,8 @@ const SupportTicketsPage  = lazy(() => import('./pages/admin/SupportTicketsPage'
 const CasinoFinancialPage = lazy(() => import('./pages/admin/CasinoFinancialPage'));
 const BetHistoryPage      = lazy(() => import('./pages/admin/BetHistoryPage'));
 
-const AdminFallback = () => (
+// Minimal spinner — used as Suspense fallback for all lazy pages
+const PageFallback = () => (
   <div className="min-h-screen bg-gray-950 flex items-center justify-center">
     <div className="w-10 h-10 rounded-full border-4 border-yellow-400 border-t-transparent animate-spin" />
   </div>
@@ -140,90 +144,78 @@ function AppRoutes() {
   }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <Routes>
-      {/* Public routes — wrapped in PublicLayout which adds the Footer */}
-      <Route element={<PublicLayout />}>
-        <Route path="/" element={<CasinoLobby onNavigateToSlot={(id?: string, title?: string, jackpotMode?: boolean) => navigate('/slot', { state: { id, title, jackpotMode } })} />} />
-        <Route path="/jackpots" element={<JackpotsPage />} />
-        <Route path="/vip" element={<VIPPage />} />
-        <Route path="/notifications" element={<NotificationsPage />} />
-        <Route path="/live-tables" element={<LiveTablesPage />} />
-        <Route path="/live-tables/:tableId" element={<LiveTableRoom />} />
-        <Route path="/auth/login" element={<LoginPage />} />
-        <Route path="/auth/signup" element={<SignUpPage />} />
-        <Route path="/auth/forgot-password" element={<ForgotPasswordPage />} />
-        <Route path="/auth/reset-password" element={<ResetPasswordPage />} />
-        <Route path="/auth/callback" element={<AuthCallbackPage />} />
-        <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
-        <Route path="/terms" element={<TermsAndConditionsPage />} />
-        <Route path="/contact" element={<ContactPage />} />
+    // Single Suspense boundary wraps all routes — eliminates per-route wrapper noise
+    // while still showing the spinner for any lazy-loaded page transition.
+    <Suspense fallback={<PageFallback />}>
+      <Routes>
+        {/* Public routes — wrapped in PublicLayout which adds the Footer */}
+        <Route element={<PublicLayout />}>
+          <Route path="/" element={<CasinoLobby onNavigateToSlot={(id?: string, title?: string, jackpotMode?: boolean) => navigate('/slot', { state: { id, title, jackpotMode } })} />} />
+          <Route path="/jackpots" element={<JackpotsPage />} />
+          <Route path="/vip" element={<VIPPage />} />
+          <Route path="/notifications" element={<NotificationsPage />} />
+          <Route path="/live-tables" element={<LiveTablesPage />} />
+          <Route path="/live-tables/:tableId" element={<LiveTableRoom />} />
+          <Route path="/auth/login" element={<LoginPage />} />
+          <Route path="/auth/signup" element={<SignUpPage />} />
+          <Route path="/auth/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/auth/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/auth/callback" element={<AuthCallbackPage />} />
+          <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+          <Route path="/terms" element={<TermsAndConditionsPage />} />
+          <Route path="/contact" element={<ContactPage />} />
 
-        {/* Protected routes — require active session */}
-        <Route element={<ProtectedRoute />}>
-          <Route path="/slot" element={<SlotMachinePage onBack={() => navigate('/')} />} />
-        </Route>
-      </Route>
-
-      {/* ── Admin routes ─────────────────────────────────────────── */}
-      <Route path="/admin/login" element={
-        <Suspense fallback={<AdminFallback />}><AdminLoginPage /></Suspense>
-      } />
-
-      {/* /admin → redirect to dashboard */}
-      <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
-
-      {/* Role-gated admin layout */}
-      <Route element={
-        <AdminAuthGuard requiredRoles={['super_admin','finance_admin','support_agent','game_manager']} />
-      }>
-        <Route element={<Suspense fallback={<AdminFallback />}><AdminLayout /></Suspense>}>
-          {/* Dashboard — all admin roles can view the dashboard */}
-          <Route element={<AdminAuthGuard requiredRoles={['super_admin','finance_admin','support_agent','game_manager']} />}>
-            <Route path="/admin/dashboard" element={<Suspense fallback={<AdminFallback />}><DashboardPage /></Suspense>} />
-          </Route>
-
-          {/* Analytics — super_admin, finance_admin, game_manager */}
-          <Route element={<AdminAuthGuard requiredRoles={['super_admin','finance_admin','game_manager']} />}>
-            <Route path="/admin/analytics" element={<Suspense fallback={<AdminFallback />}><AnalyticsPage /></Suspense>} />
-          </Route>
-
-          {/* Users — super_admin, support_agent */}
-          <Route element={<AdminAuthGuard requiredRoles={['super_admin','support_agent']} />}>
-            <Route path="/admin/users" element={<Suspense fallback={<AdminFallback />}><UsersPage /></Suspense>} />
-            <Route path="/admin/users/:userId" element={<Suspense fallback={<AdminFallback />}><UserDetailPage /></Suspense>} />
-            <Route path="/admin/users/:userId/bet-history" element={<Suspense fallback={<AdminFallback />}><BetHistoryPage /></Suspense>} />
-          </Route>
-
-          {/* Finance — super_admin, finance_admin */}
-          <Route element={<AdminAuthGuard requiredRoles={['super_admin','finance_admin']} />}>
-            <Route path="/admin/finance" element={<Suspense fallback={<AdminFallback />}><FinancePage /></Suspense>} />
-            <Route path="/admin/withdrawals" element={<Suspense fallback={<AdminFallback />}><WithdrawalsPage /></Suspense>} />
-            <Route path="/admin/casino-financial" element={<Suspense fallback={<AdminFallback />}><CasinoFinancialPage /></Suspense>} />
-          </Route>
-
-          {/* Games / RTP / Jackpots / Live Tables — super_admin, game_manager */}
-          <Route element={<AdminAuthGuard requiredRoles={['super_admin','game_manager']} />}>
-            <Route path="/admin/games" element={<Suspense fallback={<AdminFallback />}><GamesPage /></Suspense>} />
-            <Route path="/admin/rtp" element={<Suspense fallback={<AdminFallback />}><RTPPage /></Suspense>} />
-            <Route path="/admin/jackpots" element={<Suspense fallback={<AdminFallback />}><AdminJackpotsPage /></Suspense>} />
-            <Route path="/admin/live-tables" element={<Suspense fallback={<AdminFallback />}><LiveTablesAdminPage /></Suspense>} />
-          </Route>
-
-          {/* Fraud + Audit — super_admin + support_agent */}
-          <Route element={<AdminAuthGuard requiredRoles={['super_admin', 'support_agent']} />}>
-            <Route path="/admin/fraud" element={<Suspense fallback={<AdminFallback />}><FraudPage /></Suspense>} />
-            <Route path="/admin/audit" element={<Suspense fallback={<AdminFallback />}><AuditPage /></Suspense>} />
-          </Route>
-
-          {/* Support Tickets — super_admin, support_agent */}
-          <Route element={<AdminAuthGuard requiredRoles={['super_admin','support_agent']} />}>
-            <Route path="/admin/support-tickets" element={<Suspense fallback={<AdminFallback />}><SupportTicketsPage /></Suspense>} />
+          {/* Protected routes — require active session */}
+          <Route element={<ProtectedRoute />}>
+            <Route path="/slot" element={<SlotMachinePage onBack={() => navigate('/')} />} />
           </Route>
         </Route>
-      </Route>
 
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        {/* ── Admin routes ─────────────────────────────────────────── */}
+        <Route path="/admin/login" element={<AdminLoginPage />} />
+
+        {/* /admin → redirect to dashboard */}
+        <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
+
+        {/* Role-gated admin layout — single outer guard checks auth,
+            inner guards check role permissions without re-running init */}
+        <Route element={
+          <AdminAuthGuard requiredRoles={['super_admin','finance_admin','support_agent','game_manager']} />
+        }>
+          <Route element={<AdminLayout />}>
+            <Route path="/admin/dashboard" element={<DashboardPage />} />
+            <Route element={<AdminAuthGuard requiredRoles={['super_admin','finance_admin','game_manager']} />}>
+              <Route path="/admin/analytics" element={<AnalyticsPage />} />
+            </Route>
+            <Route element={<AdminAuthGuard requiredRoles={['super_admin','support_agent']} />}>
+              <Route path="/admin/users" element={<UsersPage />} />
+              <Route path="/admin/users/:userId" element={<UserDetailPage />} />
+              <Route path="/admin/users/:userId/bet-history" element={<BetHistoryPage />} />
+            </Route>
+            <Route element={<AdminAuthGuard requiredRoles={['super_admin','finance_admin']} />}>
+              <Route path="/admin/finance" element={<FinancePage />} />
+              <Route path="/admin/withdrawals" element={<WithdrawalsPage />} />
+              <Route path="/admin/casino-financial" element={<CasinoFinancialPage />} />
+            </Route>
+            <Route element={<AdminAuthGuard requiredRoles={['super_admin','game_manager']} />}>
+              <Route path="/admin/games" element={<GamesPage />} />
+              <Route path="/admin/rtp" element={<RTPPage />} />
+              <Route path="/admin/jackpots" element={<AdminJackpotsPage />} />
+              <Route path="/admin/live-tables" element={<LiveTablesAdminPage />} />
+            </Route>
+            <Route element={<AdminAuthGuard requiredRoles={['super_admin', 'support_agent']} />}>
+              <Route path="/admin/fraud" element={<FraudPage />} />
+              <Route path="/admin/audit" element={<AuditPage />} />
+            </Route>
+            <Route element={<AdminAuthGuard requiredRoles={['super_admin','support_agent']} />}>
+              <Route path="/admin/support-tickets" element={<SupportTicketsPage />} />
+            </Route>
+          </Route>
+        </Route>
+
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Suspense>
   );
 }
 

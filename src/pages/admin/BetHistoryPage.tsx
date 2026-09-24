@@ -285,7 +285,7 @@ export default function BetHistoryPage() {
   const [customStart, setCustomStart]     = useState('');
   const [customEnd,   setCustomEnd]       = useState('');
   const [gameFilter,  setGameFilter]      = useState('');   // '' = all games
-  const [showDetail,  setShowDetail]      = useState(false);
+  const [showDetail,  setShowDetail]      = useState(true);  // expanded by default
 
   // ── Summary data ─────────────────────────────────────────────────────────
   const [summary, setSummary]             = useState<GameSummaryRow[]>([]);
@@ -562,8 +562,7 @@ export default function BetHistoryPage() {
             }`}
           >
             {showDetail ? 'HIDE BETS' : 'VIEW BETS'}
-          </button>
-        </div>
+          </button>        </div>
 
         {showDetail && (
           <>
@@ -579,13 +578,15 @@ export default function BetHistoryPage() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-white/10 bg-white/5">
-                        {['Date / Time', 'Game', 'Bet Amount', 'Win / Payout', 'GGR', 'Result'].map((h) => (
+                        {['Date / Time', 'Game', 'Bet ID', 'Bet Amount', 'Win / Payout', 'Net', 'Result'].map((h) => (
                           <th key={h} className="px-4 py-3 text-left text-xs uppercase tracking-widest text-white/50 whitespace-nowrap">{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {spins.map((spin) => (
+                      {spins.map((spin) => {
+                        const net = spin.payout - spin.bet;
+                        return (
                         <tr key={spin.id} className="border-b border-white/5 hover:bg-white/[0.03] transition-colors">
                           <td className="px-4 py-3 text-white/50 text-xs whitespace-nowrap">
                             {new Date(spin.created_at).toLocaleString('en-KE', {
@@ -594,11 +595,12 @@ export default function BetHistoryPage() {
                             })}
                           </td>
                           <td className="px-4 py-3 text-white/80 whitespace-nowrap">{gameLabel(spin.game_id)}</td>
+                          <td className="px-4 py-3 font-mono text-white/30 text-xs">{spin.id.slice(0, 8).toUpperCase()}</td>
                           <td className="px-4 py-3 font-mono text-white/80">{fmt(spin.bet)}</td>
                           <td className="px-4 py-3 font-mono text-green-400">{fmt(spin.payout)}</td>
                           <td className="px-4 py-3">
-                            <span className={`font-mono ${spin.ggr >= 0 ? 'text-[#FFD700]' : 'text-red-400'}`}>
-                              {fmt(spin.ggr)}
+                            <span className={`font-mono font-bold ${net >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                              {net >= 0 ? '+' : ''}{fmt(net)}
                             </span>
                           </td>
                           <td className="px-4 py-3">
@@ -611,7 +613,8 @@ export default function BetHistoryPage() {
                             </span>
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

@@ -2,9 +2,9 @@
 // Deploy: supabase functions deploy mpesa-callback
 // Set MPESA_CALLBACK_URL to: https://<project>.supabase.co/functions/v1/mpesa-callback
 
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-Deno.serve(async (req) => {
+Deno.serve(async (req: Request) => {
   // Safaricom always expects HTTP 200. Never return 4xx/5xx to Daraja.
   try {
     const body = await req.json();
@@ -41,6 +41,7 @@ Deno.serve(async (req) => {
       console.log('[mpesa-callback] Payment success. Receipt:', receiptToSave, 'Amount:', paidAmount);
 
       // Guard against double-credit: only update if still pending
+      // Returns the transaction id + amounts so we can credit casino cash below
       const { data: txn, error: txnErr } = await supabase
         .from('transactions')
         .update({
@@ -49,7 +50,7 @@ Deno.serve(async (req) => {
         })
         .eq('checkout_request_id', checkoutRequestId)
         .eq('status', 'pending')    // ← idempotency guard
-        .select('user_id, amount')
+        .select('id, user_id, amount')
         .single();
 
       if (txnErr) {
@@ -81,6 +82,20 @@ Deno.serve(async (req) => {
             console.error('[mpesa-callback] Balance update failed:', updateErr.message);
           } else {
             console.log(`[mpesa-callback] Credited KES ${creditAmount} to user ${txn.user_id}. New balance: ${newBalance}`);
+
+            // ── Casino cash ledger: record M-Pesa deposit as casino inflow ──
+            // Uses service_role key so it can call the SECURITY DEFINER RPC.
+            // Idempotent: replaying the same txn.id is silently ignored in the RPC.
+            const { error: ledgerErr } = await supabase.rpc('record_deposit_cash_inflow', {
+              p_transaction_id: txn.id,
+              p_amount:         creditAmount,
+            });
+            if (ledgerErr) {
+              // Non-fatal: player balance is already credited. Log and continue.
+              console.warn('[mpesa-callback] Casino ledger update failed (non-fatal):', ledgerErr.message);
+            } else {
+              console.log(`[mpesa-callback] Casino cash +KES ${creditAmount} recorded for txn ${txn.id}`);
+            }
           }
         }
       }

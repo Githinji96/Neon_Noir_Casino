@@ -170,7 +170,7 @@ export default function DashboardPage() {
 
       const [trendSpins, trendDeps] = await Promise.all([
         supabase.from('spins').select('bet, payout, created_at')
-          .gte('created_at', trendStart.toISOString()).limit(50000),
+          .gte('created_at', trendStart.toISOString()).limit(10000),
         supabase.from('transactions').select('amount, created_at')
           .eq('status', 'success').neq('type', 'withdrawal')
           .gte('created_at', trendStart.toISOString()).limit(10000),

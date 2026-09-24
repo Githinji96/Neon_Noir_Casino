@@ -22,6 +22,7 @@ interface FinancialSummary {
   ggr:                 number;
   player_funds:        number;
   casino_balance:      number;
+  opening_balance:     number;
   pending_deposits:    number;
   pending_withdrawals: number;
   jackpot_pool:        number;
@@ -182,6 +183,7 @@ export default function CasinoFinancialPage() {
         ggr:                 Number(raw.ggr)                 || 0,
         player_funds:        Number(raw.player_funds)        || 0,
         casino_balance:      Number(raw.casino_balance)      || 0,
+        opening_balance:     Number(raw.opening_balance)     || 0,
         pending_deposits:    Number(raw.pending_deposits)    || 0,
         pending_withdrawals: Number(raw.pending_withdrawals) || 0,
         jackpot_pool:        Number(raw.jackpot_pool)        || 0,
@@ -448,148 +450,216 @@ export default function CasinoFinancialPage() {
             )}
           </section>
 
-          {/* ── Casino Account Balance Reconciliation ───────────────────── */}
-          <section className="bg-white/5 border border-white/10 rounded-2xl p-5">
-            <div className="flex items-center justify-between mb-5 flex-wrap gap-2">
+          {/* ── Casino Cash Balance Redesign ────────────────────────────── */}
+          <section className="rounded-2xl overflow-hidden"
+            style={{ border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)' }}>
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-white/8"
+              style={{ background: 'rgba(0,0,0,0.3)' }}>
               <div>
-                <h2 className="text-white/60 text-xs font-orbitron uppercase tracking-widest">Casino Account Balance — Full Breakdown</h2>
-                <p className="text-white/30 text-xs mt-0.5">Reconciliation of the live casino ledger balance</p>
+                <h2 className="font-orbitron font-bold text-white tracking-widest uppercase text-sm">
+                  Casino Cash Balance — Full Breakdown
+                </h2>
+                <p className="text-white/30 text-xs mt-0.5">Running ledger of all casino cash inflows and outflows</p>
               </div>
-              <span className="flex items-center gap-1.5 text-[10px] font-orbitron text-green-400">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                LIVE BALANCE
-              </span>
-            </div>
-
-            {/* Reconciliation table */}
-            <div className="flex flex-col divide-y divide-white/5 rounded-xl overflow-hidden"
-              style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
-
-              {/* Opening balance row */}
-              <div className="flex items-center justify-between px-5 py-3.5"
-                style={{ background: 'rgba(255,255,255,0.03)' }}>
-                <div className="flex items-center gap-3">
-                  <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs bg-white/10 text-white/50 font-orbitron">0</span>
-                  <span className="text-white/50 text-sm font-orbitron tracking-wide">Opening Balance</span>
-                </div>
-                <span className="font-orbitron font-bold text-sm text-white/50">KES 0.00</span>
-              </div>
-
-              {/* Inflows */}
-              {[
-                {
-                  step: '1', label: 'Player Deposits (M-Pesa)',
-                  desc: 'Successful player deposits via Safaricom Daraja',
-                  value: summary?.total_deposited ?? 0,
-                  sign: '+', color: '#22c55e',
-                },
-                {
-                  step: '2', label: 'Admin Debits from Players',
-                  desc: 'Amounts reclaimed from player wallets by admin',
-                  value: summary?.admin_debits_taken ?? 0,
-                  sign: '+', color: '#06b6d4',
-                },
-                {
-                  step: '3', label: 'GGR (Player Losses)',
-                  desc: 'Total bets placed minus total winnings paid out',
-                  value: summary?.ggr ?? 0,
-                  sign: summary?.ggr != null && summary.ggr >= 0 ? '+' : '−',
-                  color: (summary?.ggr ?? 0) >= 0 ? '#FFD700' : '#ef4444',
-                },
-              ].map((row) => (
-                <div key={row.step} className="flex items-center justify-between px-5 py-3.5"
-                  style={{ background: 'rgba(255,255,255,0.02)' }}>
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs shrink-0 font-orbitron font-bold"
-                      style={{ background: `${row.color}22`, color: row.color }}>
-                      {row.step}
-                    </span>
-                    <div className="min-w-0">
-                      <p className="text-white/80 text-sm font-orbitron">{row.label}</p>
-                      <p className="text-white/30 text-[10px] mt-0.5">{row.desc}</p>
-                    </div>
-                  </div>
-                  <span className="font-orbitron font-bold text-sm shrink-0 ml-4"
-                    style={{ color: row.color }}>
-                    {row.sign} KES {Math.abs(Math.round(row.value)).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
-              ))}
-
-              {/* Outflows */}
-              {[
-                {
-                  step: '4', label: 'Player Withdrawals (M-Pesa)',
-                  desc: 'Successful withdrawals sent to player M-Pesa numbers',
-                  value: summary?.total_withdrawn ?? 0,
-                  color: '#ef4444',
-                },
-                {
-                  step: '5', label: 'Admin Credits to Players',
-                  desc: 'Manual credits paid to player wallets by admin',
-                  value: summary?.admin_credits_paid ?? 0,
-                  color: '#f97316',
-                },
-                {
-                  step: '6', label: 'Jackpot Payouts',
-                  desc: 'Jackpot prizes paid to winners (tracked separately from GGR)',
-                  value: summary?.jackpot_paid ?? 0,
-                  color: '#a855f7',
-                },
-              ].map((row) => (
-                <div key={row.step} className="flex items-center justify-between px-5 py-3.5"
-                  style={{ background: 'rgba(255,255,255,0.02)' }}>
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs shrink-0 font-orbitron font-bold"
-                      style={{ background: `${row.color}22`, color: row.color }}>
-                      {row.step}
-                    </span>
-                    <div className="min-w-0">
-                      <p className="text-white/80 text-sm font-orbitron">{row.label}</p>
-                      <p className="text-white/30 text-[10px] mt-0.5">{row.desc}</p>
-                    </div>
-                  </div>
-                  <span className="font-orbitron font-bold text-sm shrink-0 ml-4"
-                    style={{ color: row.color }}>
-                    − KES {Math.round(row.value).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
-              ))}
-
-              {/* Result row */}
-              <div className="flex items-center justify-between px-5 py-4"
-                style={{ background: 'linear-gradient(135deg, rgba(255,215,0,0.08), rgba(255,165,0,0.04))' }}>
-                <div className="flex items-center gap-3">
-                  <span className="text-lg">🏦</span>
-                  <div>
-                    <p className="font-orbitron font-bold text-sm text-white tracking-wide">= Casino Account Balance</p>
-                    <p className="text-white/30 text-[10px] mt-0.5">Live ledger value from casino_account table</p>
-                  </div>
-                </div>
-                <span className="font-orbitron font-black text-xl"
-                  style={{ color: '#FFD700', textShadow: '0 0 16px rgba(255,215,0,0.4)' }}>
-                  KES {Math.round(summary?.casino_balance ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                </span>
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                <span className="font-orbitron text-[10px] text-green-400 tracking-widest">LIVE BALANCE</span>
               </div>
             </div>
 
-            {/* Separate metrics note */}
-            <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-              {[
-                { icon: '👥', label: 'Player Funds (Liability)', value: `KES ${Math.round(summary?.player_funds ?? 0).toLocaleString()}`, note: 'Owed to players — not casino cash' },
-                { icon: '🎯', label: 'Jackpot Pool (Ring-fenced)', value: `KES ${Math.round(summary?.jackpot_pool ?? 0).toLocaleString()}`, note: 'Progressive jackpot reserve' },
-                { icon: '⏳', label: 'Pending (Not yet settled)', value: `KES ${Math.round((summary?.pending_deposits ?? 0) + (summary?.pending_withdrawals ?? 0)).toLocaleString()}`, note: 'Does not affect current balance' },
-              ].map((item) => (
-                <div key={item.label} className="rounded-xl px-4 py-3 flex items-start gap-3"
-                  style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                  <span className="text-lg shrink-0">{item.icon}</span>
+            {/* Opening balance banner — only when non-zero */}
+            {(summary?.opening_balance ?? 0) !== 0 && (
+              <div className="flex items-center gap-3 px-6 py-3 border-b border-white/5"
+                style={{ background: 'rgba(255,215,0,0.04)' }}>
+                <span className="text-[#FFD700] text-base shrink-0">⚠</span>
+                <div className="flex-1 min-w-0">
+                  <span className="font-orbitron text-xs text-[#FFD700]">Opening Balance: </span>
+                  <span className="font-orbitron text-xs font-bold text-[#FFD700]">
+                    KES {Math.round(summary?.opening_balance ?? 0).toLocaleString()}
+                  </span>
+                  <span className="text-white/30 text-xs ml-2">
+                    — carried forward from before M-Pesa cash tracking was enabled
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Two-column ledger */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-white/5">
+
+              {/* ── Inflows column ── */}
+              <div className="p-5 flex flex-col gap-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-2 h-2 rounded-full bg-green-400" />
+                  <span className="font-orbitron text-[10px] text-green-400 uppercase tracking-widest">Cash Inflows</span>
+                </div>
+
+                {/* Opening balance row */}
+                <div className="flex items-center justify-between py-2.5 px-3 rounded-xl"
+                  style={{ background: 'rgba(255,255,255,0.04)' }}>
+                  <div className="flex items-center gap-2.5">
+                    <span className="w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-orbitron font-bold bg-white/10 text-white/40 shrink-0">0</span>
+                    <div>
+                      <p className="text-white/50 text-xs font-orbitron">Opening Balance</p>
+                      <p className="text-white/25 text-[10px]">Legacy baseline before Daraja integration cutover</p>
+                    </div>
+                  </div>
+                  <span className="font-orbitron font-bold text-sm shrink-0 ml-3"
+                    style={{ color: (summary?.opening_balance ?? 0) >= 0 ? 'rgba(255,255,255,0.4)' : '#ef4444' }}>
+                    KES {Math.round(summary?.opening_balance ?? 0).toLocaleString()}
+                  </span>
+                </div>
+
+                {[
+                  {
+                    n: '1', icon: '📲', label: 'Player Deposits (M-Pesa)',
+                    sub: 'Confirmed via Safaricom Daraja callback',
+                    badge: 'API Verified',
+                    value: summary?.total_deposited ?? 0,
+                    color: '#22c55e',
+                  },
+                  {
+                    n: '2', icon: '↩', label: 'Admin Debits from Players',
+                    sub: 'Amounts reclaimed from player wallets by admin',
+                    value: summary?.admin_debits_taken ?? 0,
+                    color: '#06b6d4',
+                  },
+                ].map((row) => (
+                  <div key={row.n} className="flex items-center justify-between py-2.5 px-3 rounded-xl"
+                    style={{ background: `${row.color}0a`, border: `1px solid ${row.color}18` }}>
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-orbitron font-bold shrink-0"
+                        style={{ background: `${row.color}22`, color: row.color }}>
+                        {row.n}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="text-white/80 text-xs font-orbitron">{row.label}</p>
+                          {'badge' in row && row.badge && (
+                            <span className="text-[9px] font-orbitron px-1.5 py-0.5 rounded-full"
+                              style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.3)' }}>
+                              {row.badge}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-white/25 text-[10px] mt-0.5 truncate">{row.sub}</p>
+                      </div>
+                    </div>
+                    <span className="font-orbitron font-bold text-sm shrink-0 ml-3"
+                      style={{ color: row.color }}>
+                      + {fmt(row.value)}
+                    </span>
+                  </div>
+                ))}
+
+                {/* Inflow subtotal */}
+                <div className="flex items-center justify-between pt-2 border-t border-white/8 px-1">
+                  <span className="text-white/30 text-xs font-orbitron">Total Inflows</span>
+                  <span className="font-orbitron font-bold text-sm text-green-400">
+                    + {fmt((summary?.opening_balance ?? 0) + (summary?.total_deposited ?? 0) + (summary?.admin_debits_taken ?? 0))}
+                  </span>
+                </div>
+              </div>
+
+              {/* ── Outflows column ── */}
+              <div className="p-5 flex flex-col gap-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-2 h-2 rounded-full bg-red-400" />
+                  <span className="font-orbitron text-[10px] text-red-400 uppercase tracking-widest">Cash Outflows</span>
+                </div>
+
+                {[
+                  {
+                    n: '3', icon: '💸', label: 'Player Withdrawals (M-Pesa)',
+                    sub: 'Completed withdrawals sent to player M-Pesa numbers',
+                    value: summary?.total_withdrawn ?? 0,
+                    color: '#ef4444',
+                  },
+                  {
+                    n: '4', icon: '🎁', label: 'Admin Credits to Players',
+                    sub: 'Manual credits paid to player wallets by admin',
+                    value: summary?.admin_credits_paid ?? 0,
+                    color: '#f97316',
+                  },
+                ].map((row) => (
+                  <div key={row.n} className="flex items-center justify-between py-2.5 px-3 rounded-xl"
+                    style={{ background: `${row.color}0a`, border: `1px solid ${row.color}18` }}>
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-orbitron font-bold shrink-0"
+                        style={{ background: `${row.color}22`, color: row.color }}>
+                        {row.n}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-white/80 text-xs font-orbitron">{row.label}</p>
+                        <p className="text-white/25 text-[10px] mt-0.5 truncate">{row.sub}</p>
+                      </div>
+                    </div>
+                    <span className="font-orbitron font-bold text-sm shrink-0 ml-3"
+                      style={{ color: row.color }}>
+                      − {fmt(row.value)}
+                    </span>
+                  </div>
+                ))}
+
+                {/* Outflow subtotal */}
+                <div className="flex items-center justify-between pt-2 border-t border-white/8 px-1">
+                  <span className="text-white/30 text-xs font-orbitron">Total Outflows</span>
+                  <span className="font-orbitron font-bold text-sm text-red-400">
+                    − {fmt((summary?.total_withdrawn ?? 0) + (summary?.admin_credits_paid ?? 0))}
+                  </span>
+                </div>
+
+                {/* Placeholder rows so columns stay even height */}
+                <div className="flex-1" />
+              </div>
+            </div>
+
+            {/* ── Net Balance Result ── */}
+            <div className="px-6 py-5 border-t border-white/8"
+              style={{
+                background: (summary?.casino_balance ?? 0) >= 0
+                  ? 'linear-gradient(135deg, rgba(0,255,136,0.06), rgba(0,180,100,0.03))'
+                  : 'linear-gradient(135deg, rgba(239,68,68,0.08), rgba(200,30,30,0.04))',
+              }}>
+              <div className="flex items-center justify-between flex-wrap gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shrink-0"
+                    style={{
+                      background: (summary?.casino_balance ?? 0) >= 0
+                        ? 'rgba(0,255,136,0.1)' : 'rgba(239,68,68,0.1)',
+                      border: (summary?.casino_balance ?? 0) >= 0
+                        ? '1px solid rgba(0,255,136,0.2)' : '1px solid rgba(239,68,68,0.2)',
+                    }}>
+                    🏦
+                  </div>
                   <div>
-                    <p className="font-orbitron text-white/50 tracking-wide" style={{ fontSize: '9px' }}>{item.label}</p>
-                    <p className="font-orbitron font-bold text-white text-sm mt-0.5">{item.value}</p>
-                    <p className="text-white/25 mt-0.5" style={{ fontSize: '9px' }}>{item.note}</p>
+                    <p className="font-orbitron font-bold text-white tracking-wide">= Casino Cash Balance</p>
+                    <p className="text-white/30 text-[10px] mt-0.5">
+                      Opening + Deposits + Admin Debits − Withdrawals − Admin Credits
+                    </p>
+                    {(summary?.casino_balance ?? 0) < 0 && (
+                      <p className="text-red-400/70 text-[10px] mt-0.5 font-orbitron">
+                        NET DEFICIT — casino has issued more funds than received
+                      </p>
+                    )}
                   </div>
                 </div>
-              ))}
+                <div className="text-right">
+                  <p className="font-orbitron font-black text-3xl"
+                    style={{
+                      color: (summary?.casino_balance ?? 0) >= 0 ? '#00ff88' : '#ef4444',
+                      textShadow: (summary?.casino_balance ?? 0) >= 0
+                        ? '0 0 24px rgba(0,255,136,0.5)' : '0 0 24px rgba(239,68,68,0.5)',
+                    }}>
+                    KES {Math.round(Math.abs(summary?.casino_balance ?? 0)).toLocaleString()}
+                  </p>
+                  {(summary?.casino_balance ?? 0) < 0 && (
+                    <p className="text-red-400/60 text-[10px] font-orbitron mt-0.5">DEFICIT</p>
+                  )}
+                </div>
+              </div>
             </div>
           </section>
 
@@ -598,7 +668,7 @@ export default function CasinoFinancialPage() {
             style={{ background: 'rgba(255,215,0,0.03)', border: '1px solid rgba(255,215,0,0.08)' }}>
             <span className="text-white/50 font-semibold">Note: </span>
             GGR = Total Wagered (spins) − Total Won (spins). Net Cash Flow = Total Deposits − Total Withdrawals.
-            Player Funds = sum of active player balances (live snapshot). Jackpot payouts are tracked separately
+            Player Funds = sum of all active account balances (live snapshot). Jackpot payouts are tracked separately
             from GGR. All figures are calculated from live transaction and spin records — no data is hardcoded.
           </div>
         </>

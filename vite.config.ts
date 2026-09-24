@@ -5,22 +5,28 @@ export default defineConfig({
   plugins: [react()],
 
   build: {
-    // Raise warning threshold — 838KB gzipped to 241KB is acceptable for a casino app
-    chunkSizeWarningLimit: 1000,
+    // Raise warning threshold
+    chunkSizeWarningLimit: 800,
+    // Target modern browsers — smaller output, better tree-shaking
+    target: 'es2020',
+    // Disable source maps in production — smaller bundles, faster CI
+    sourcemap: false,
+    // esbuild minifier (default): fastest and produces smallest output
+    minify: 'esbuild',
     rollupOptions: {
       output: {
         manualChunks: {
-          // Core React runtime
+          // Core React runtime — loaded on every page
           'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-          // Animation library
+          // Animation library — used across most pages
           'vendor-motion': ['framer-motion'],
-          // Charts (largest dependency)
+          // Charts — only admin pages (already lazy loaded)
           'vendor-charts': ['recharts'],
           // Supabase client
           'vendor-supabase': ['@supabase/supabase-js'],
           // Form handling
           'vendor-forms': ['react-hook-form', '@hookform/resolvers', 'zod'],
-          // State
+          // State management
           'vendor-state': ['zustand'],
         },
       },

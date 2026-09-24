@@ -1,6 +1,5 @@
 import { useAdminStore } from '../../store/adminStore';
 import type { AdminRole } from '../../store/adminStore';
-import { supabase } from '../../lib/supabase';
 
 interface AdminTopbarProps {
   title: string;
@@ -22,20 +21,14 @@ const roleLabel: Record<AdminRole, string> = {
 };
 
 export default function AdminTopbar({ title, onMenuClick }: AdminTopbarProps) {
-  const { adminProfile, unreadAlertCount } = useAdminStore();
+  const { adminProfile, unreadAlertCount, signOut } = useAdminStore();
 
   async function handleSignOut() {
-    // 1. Clear client state immediately — AdminAuthGuard will reactively
-    //    render <Navigate to="/admin/login"> as soon as adminProfile is null
-    useAdminStore.setState({ adminProfile: null, alerts: [], unreadAlertCount: 0, sessionExpiresAt: null });
-    // 2. Revoke Supabase token in the background (capped at 3s)
-    void Promise.race([
-      supabase.auth.signOut(),
-      new Promise<void>((resolve) => setTimeout(resolve, 3_000)),
-    ]).then(() => {
-      // 3. Best-effort: clean up server session row
-      void Promise.resolve(supabase.rpc('end_admin_session')).catch(() => {});
-    });
+    // Clear client state immediately so the UI redirects without waiting for network,
+    // then let the store's guarded signOut handle the Supabase token revocation.
+    // All signOut paths go through adminStore.signOut() which deduplicates concurrent
+    // calls and prevents AbortError from racing Web Lock acquisitions.
+    await signOut();
   }
 
   return (

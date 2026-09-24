@@ -8,6 +8,7 @@ import DataTable, { Column } from '../../components/admin/DataTable';
 import LoadingSkeleton from '../../components/admin/LoadingSkeleton';
 import type { JackpotTriggerMode } from '../../logic/jackpot/jackpotEngine';
 import { useJackpotOverrideStore } from '../../store/jackpotOverrideStore';
+import { useJackpotStore } from '../../store/jackpotStore';
 
 interface WinRow {
   id: string;
@@ -44,6 +45,7 @@ export default function AdminJackpotsPage() {
   const [minThresholds, setMinThresholds] = useState<Record<string, string>>({});
 
   const { overrides, setMode, forceNext, scheduleAt, setMinThreshold, cancel, refresh } = useJackpotOverrideStore();
+  const syncJackpots = useJackpotStore((s) => s.syncFromSupabase);
 
   // Sync persisted overrides into engine on mount
   useEffect(() => { refresh(); }, []);
@@ -78,11 +80,22 @@ export default function AdminJackpotsPage() {
     if (isNaN(trigger) || trigger < 0.000001 || trigger > 0.01) errors.trigger_probability = 'Must be 0.000001–0.01';
     if (Object.keys(errors).length) { setEditForm((f) => ({ ...f, errors })); return; }
 
-    const { error } = await supabase.from('jackpots').update({ base_amount: base, contribution_rate: contrib, trigger_probability: trigger }).eq('id', jp.id);
+    const { error } = await supabase.from('jackpots').update({
+      base_amount:         base,
+      contribution_rate:   contrib,
+      trigger_probability: trigger,
+      // Always align current_amount to the new base when base changes —
+      // ensures the displayed jackpot amount reflects the admin's intent immediately.
+      // If the pool has grown beyond the new base, keep the higher value.
+      current_amount: Math.max(jp.current_amount, base),
+    }).eq('id', jp.id);
     if (error) { toast(error.message, 'error'); return; }
     await auditLog({ admin_id: adminProfile?.id ?? null, admin_role: adminProfile?.admin_role ?? 'super_admin', action_type: 'jackpot_config_update', target_entity: 'jackpots', target_id: jp.id, previous_value: { base_amount: jp.base_amount, contribution_rate: jp.contribution_rate }, new_value: { base_amount: base, contribution_rate: contrib }, ip_address: null });
     toast('Jackpot config saved.', 'success');
     setEditingId(null);
+    // Sync the engine immediately so the player UI reflects the change right away
+    // without waiting for the 60s polling interval.
+    await syncJackpots();
     fetchData();
   }
 
@@ -92,12 +105,27 @@ export default function AdminJackpotsPage() {
     await auditLog({ admin_id: adminProfile?.id ?? null, admin_role: adminProfile?.admin_role ?? 'super_admin', action_type: 'jackpot_force_reset', target_entity: 'jackpots', target_id: jp.id, previous_value: jp.current_amount, new_value: jp.base_amount, ip_address: null });
     toast(`${jp.name} reset to base amount.`, 'success');
     setResetConfirm(null);
+    // Sync the engine immediately so the player UI reflects the reset right away
+    await syncJackpots();
     fetchData();
   }
 
   function handleSetMode(id: string, mode: JackpotTriggerMode) {
     setMode(id, mode);
-    toast(`Mode set to ${mode}`, 'success');
+    // Write the locked flag to DB so ALL player browsers pick it up on their
+    // next syncFromSupabase() call (every 30s or on page load).
+    const locked = mode === 'locked';
+    supabase
+      .from('jackpots')
+      .update({ locked })
+      .eq('id', id)
+      .then(({ error }) => {
+        if (error) {
+          toast(`Mode set locally but DB write failed: ${error.message}`, 'error');
+        } else {
+          toast(`Mode set to ${mode}`, 'success');
+        }
+      });
   }
 
   function handleForceNext(id: string, name: string) {

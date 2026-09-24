@@ -164,7 +164,8 @@ export default function AnalyticsPage() {
           .from('spins')
           .select('bet, payout, game_id, created_at')
           .gte('created_at', sinceDate)
-          .order('created_at', { ascending: true }),
+          .order('created_at', { ascending: true })
+          .limit(10000),
       ]);
 
       setTransactions(txRes.data ?? []);

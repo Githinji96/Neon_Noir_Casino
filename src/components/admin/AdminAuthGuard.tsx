@@ -93,10 +93,18 @@ export default function AdminAuthGuard({ requiredRoles }: AdminAuthGuardProps) {
   useEffect(() => {
     if (!adminProfile) return;
 
+    // Debounce activity resets — mousemove fires ~60fps, so only reset
+    // the inactivity timer at most once per second
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
     const onActivity = () => {
-      lastActivityRef.current = Date.now();
-      setInactivityWarning(false);
-      scheduleInactivityLogout();
+      if (debounceTimer) return; // already scheduled, ignore
+      debounceTimer = setTimeout(() => {
+        debounceTimer = null;
+        lastActivityRef.current = Date.now();
+        setInactivityWarning(false);
+        scheduleInactivityLogout();
+      }, 1000);
     };
 
     ACTIVITY_EVENTS.forEach((evt) => document.addEventListener(evt, onActivity, { passive: true }));
@@ -104,6 +112,7 @@ export default function AdminAuthGuard({ requiredRoles }: AdminAuthGuardProps) {
 
     return () => {
       ACTIVITY_EVENTS.forEach((evt) => document.removeEventListener(evt, onActivity));
+      if (debounceTimer) clearTimeout(debounceTimer);
       clearInactivityTimers();
     };
   }, [adminProfile, scheduleInactivityLogout, clearInactivityTimers]);

@@ -73,8 +73,8 @@ export const useLiveTablesStore = create<LiveTablesState>((set) => ({
       })
       .subscribe();
 
-    // Fallback polling every 6 seconds
-    const interval = setInterval(() => { if (!cancelled) void load(); }, 6000);
+    // Fallback polling every 60 seconds (Realtime subscription handles real-time updates)
+    const interval = setInterval(() => { if (!cancelled) void load(); }, 60_000);
 
     return () => {
       cancelled = true;

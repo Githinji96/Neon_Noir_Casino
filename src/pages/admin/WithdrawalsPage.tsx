@@ -42,7 +42,8 @@ export default function WithdrawalsPage() {
       .from('transactions')
       .select('id, user_id, amount, phone, status, created_at, approved_at, rejection_reason, profiles(username, balance)')
       .eq('type', 'withdrawal')
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(500);
 
     const { data } = await query;
     setWithdrawals((data ?? []).map((row: any) => ({
@@ -163,6 +164,18 @@ export default function WithdrawalsPage() {
         approved_at: new Date().toISOString(),
       })
       .eq('id', row.id);
+
+    // Casino cash ledger: record the completed withdrawal as a cash outflow.
+    // Idempotent — replaying the same row.id is silently ignored in the RPC.
+    const { error: ledgerErr } = await supabase.rpc('record_withdrawal_cash_outflow', {
+      p_transaction_id: row.id,
+      p_amount:         row.amount,
+    });
+    if (ledgerErr) {
+      // Non-fatal: the status update succeeded. Log for visibility.
+      console.warn('[WithdrawalsPage] casino ledger outflow failed (non-fatal):', ledgerErr.message);
+    }
+
     await auditLog({
       admin_id: adminProfile?.id ?? null, admin_role: adminProfile?.admin_role ?? 'super_admin',
       action_type: 'withdrawal_complete', target_entity: 'transactions', target_id: row.id,

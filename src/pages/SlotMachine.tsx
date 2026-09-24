@@ -67,8 +67,16 @@ export default function SlotMachinePage({ onBack }: SlotMachinePageProps) {
 
   const { syncBalance, recordWin } = useAuthStore();
   const pendingJackpotWin = useJackpotStore((s) => s.pendingWin);
-  const clearPendingWin = useJackpotStore((s) => s.clearPendingWin);
+  const clearPendingWin   = useJackpotStore((s) => s.clearPendingWin);
+  const syncJackpots      = useJackpotStore((s) => s.syncFromSupabase);
   const t = useTranslation();
+
+  // Sync jackpot amounts AND lock status from DB on game load.
+  // This ensures a jackpot locked by an admin is respected immediately —
+  // the engine uses DB-authoritative locked flag from syncFromSupabase().
+  useEffect(() => {
+    syncJackpots();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const prevSpinning = useRef(false);
 
@@ -258,24 +266,28 @@ export default function SlotMachinePage({ onBack }: SlotMachinePageProps) {
       <main
         className="flex-1 min-h-0 w-full max-w-2xl mx-auto px-2 xs:px-3 sm:px-4 flex flex-col overflow-hidden"
       >
-        {/* ── Header: ← LOBBY left, TITLE centered ── */}
-        <div className="relative flex items-center justify-center pt-1 xs:pt-2 pb-0.5 xs:pb-1.5 shrink-0">
-          <button
-            onClick={handleBack}
-            className="absolute left-0 font-orbitron text-[10px] xs:text-sm text-gray-400 hover:text-white tracking-widest transition-colors"
-          >
-            {t.slot_lobby}
-          </button>
-          <div className="flex items-center gap-1">
+        {/* ── Header: back button above centered title ── */}
+        <div className="flex flex-col items-center pt-1 xs:pt-2 pb-0.5 xs:pb-1.5 shrink-0 w-full">
+          {/* Back button — left-aligned */}
+          <div className="w-full flex items-center">
+            <button
+              onClick={handleBack}
+              className="font-orbitron text-[10px] xs:text-xs text-gray-400 hover:text-white tracking-widest transition-colors whitespace-nowrap"
+            >
+              ← {t.slot_lobby}
+            </button>
+          </div>
+          {/* Game title — centered below back button */}
+          <div className="flex items-center justify-center gap-1 w-full min-w-0 overflow-hidden mt-0.5">
             <h1
-              className="font-orbitron text-sm xs:text-base sm:text-2xl font-bold text-yellow-300 tracking-widest truncate max-w-[160px] xs:max-w-[200px] sm:max-w-none"
-              style={{ textShadow: '0 0 12px rgba(253,224,71,0.7)', fontSize: 'clamp(11px, 3.5vw, 22px)' }}
+              className="font-orbitron font-bold text-yellow-300 tracking-widest truncate"
+              style={{ textShadow: '0 0 12px rgba(253,224,71,0.7)', fontSize: 'clamp(12px, 4vw, 22px)' }}
             >
               {gameTitle.toUpperCase()}
             </h1>
             {jackpotMode && (
               <span
-                className="px-1 py-0.5 rounded-full font-orbitron text-[8px] xs:text-[9px] font-bold animate-pulse shrink-0"
+                className="px-1 py-0.5 rounded-full font-orbitron text-[8px] font-bold animate-pulse shrink-0"
                 style={{ background: 'rgba(255,215,0,0.2)', border: '1px solid rgba(255,215,0,0.5)', color: '#FFD700' }}
               >
                 💰 JACKPOT

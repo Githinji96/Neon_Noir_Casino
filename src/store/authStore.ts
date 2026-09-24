@@ -58,7 +58,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         set({ user: session.user, loading: true });
         const { data } = await supabase
           .from('profiles')
-          .select('*')
+          .select('id, username, balance, phone, phone_verified, account_status, country, currency, date_of_birth, updated_at')
           .eq('id', session.user.id)
           .single();
         set({ user: session.user, profile: data, loading: false });
@@ -69,15 +69,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         set({ user: null, profile: null, loading: false });
       }
     } catch {
-      // Network error or bad config - unblock the UI
+      // Network error or bad config — unblock the UI
       set({ loading: false });
     }
 
     if (listenerRegistered) return;
     listenerRegistered = true;
 
-    // Refresh balance whenever the player's tab regains focus Ã¢â‚¬â€
-    // catches admin credits/debits that happened while the tab was hidden.
+    // Refresh profile whenever the player's tab regains focus —
+    // catches admin edits that happened while the tab was hidden.
     const onVisible = () => {
       if (document.visibilityState === 'visible') {
         useAuthStore.getState().refreshBalance();
@@ -94,10 +94,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
     }, 30_000);
 
-    // Balance is kept fresh via the 30s polling interval and visibility-change
-    // handler. We intentionally skip a per-user Realtime channel here to avoid
-    // exhausting Supabase WebSocket limits at scale (200 on free, 500 on Pro).
-
     supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_OUT' || !session?.user) {
         set({ user: null, profile: null, loading: false });
@@ -108,7 +104,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       try {
         const profilePromise = supabase
           .from('profiles')
-          .select('*')
+          .select('id, username, balance, phone, phone_verified, account_status, country, currency, date_of_birth, updated_at')
           .eq('id', session.user.id)
           .single();
         const timeoutPromise = new Promise<never>((_, reject) =>
@@ -128,8 +124,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           useGameStore.setState({ balance: data.balance });
         }
       } catch {
-        // Profile fetch failed -- keep existing profile, do not wipe phone/data
-        // set({ profile: null }) removed: caused M-Pesa number to disappear on network hiccups
+        // Profile fetch failed — keep existing profile, do not wipe phone/data
       }
     });
   },
@@ -169,11 +164,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       for (let attempt = 0; attempt < 2; attempt += 1) {
         try {
-          const { data, error } = await Promise.race([supabase.auth.signInWithPassword({ email, password }), timeoutPromise]);
+          const { data, error } = await Promise.race([
+            supabase.auth.signInWithPassword({ email, password }),
+            timeoutPromise,
+          ]);
           if (error) return error.message;
           if (!data?.user) return 'Sign in failed. Please try again.';
 
-          // Ã¢â€â‚¬Ã¢â€â‚¬ Check account_status before allowing access Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+          // Check account_status before allowing access
           const { data: profile } = await supabase
             .from('profiles')
             .select('account_status')
@@ -181,7 +179,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             .single();
 
           if (profile?.account_status === 'banned') {
-            // Sign out immediately so the session isn't held
             await supabase.auth.signOut();
             return 'This account has been permanently deleted. Contact support if you believe this is an error.';
           }
@@ -232,14 +229,28 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const { user } = get();
     if (!user) return;
     try {
+      // Fetch all admin-editable fields so the casino UI reflects admin changes
+      // within 30s (the polling interval) or immediately on tab focus.
       const { data } = await supabase
         .from('profiles')
-        .select('balance, phone, phone_verified')
+        .select('balance, phone, phone_verified, username, account_status')
         .eq('id', user.id)
         .single();
       if (data == null) return;
 
-      // If profile phone is null but auth metadata has it, patch it now
+      // ── Account status enforcement ─────────────────────────────────────────
+      // If an admin banned or suspended this player since the last poll,
+      // sign them out. Use setTimeout to defer past the current auth lock
+      // cycle — calling signOut() synchronously inside a poll that already
+      // holds a Web Lock throws AbortError: "Lock broken by another request".
+      if (data.account_status === 'banned' || data.account_status === 'suspended') {
+        set({ user: null, profile: null, loading: false }); // clear store immediately
+        setTimeout(() => supabase.auth.signOut().catch(() => {}), 0);
+        return;
+      }
+
+      // ── Phone backfill ─────────────────────────────────────────────────────
+      // If profile phone is null but auth metadata has it, patch it now.
       if (!data.phone) {
         const { data: { user: authUser } } = await supabase.auth.getUser();
         const metaPhone = authUser?.user_metadata?.phone ?? null;
@@ -254,12 +265,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         }
       }
 
+      // ── Merge all mutable fields into the store ────────────────────────────
+      // username, phone, account_status can be changed by an admin at any time.
+      // Merging them here means the casino navbar, settings page, and profile
+      // displays update automatically on the next poll or tab-focus event.
       const current = useAuthStore.getState().profile;
       set((s) => ({
         profile: s.profile
           ? {
               ...s.profile,
               balance:        data.balance        ?? s.profile.balance,
+              username:       data.username       ?? s.profile.username,
+              account_status: data.account_status ?? s.profile.account_status,
               // Never overwrite an existing phone with null from the DB
               phone:          data.phone          ?? s.profile.phone,
               phone_verified: data.phone_verified ?? s.profile.phone_verified,
@@ -267,14 +284,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           : null,
       }));
       if (data.balance != null && data.balance !== current?.balance) {
-        // Never overwrite the game store balance while a spin RPC write is in-flight â€”
+        // Never overwrite the game store balance while a spin RPC write is in-flight —
         // that would revert the optimistic balance update the player just saw.
         if (!isSpinPending()) {
           useGameStore.setState({ balance: data.balance });
         }
       }
     } catch {
-      // silent -- best effort
+      // silent — best effort
     }
   },
 
@@ -282,12 +299,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const { user, profile } = get();
     if (!user || !profile || winAmount <= 0) return;
     await supabase.from('leaderboard').insert({
-      user_id: user.id,
-      username: profile.username,
+      user_id:    user.id,
+      username:   profile.username,
       win_amount: winAmount,
       game_title: gameTitle,
     });
   },
 }));
-
-

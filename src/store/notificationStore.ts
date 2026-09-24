@@ -55,6 +55,11 @@ interface NotificationState {
   addLocal: (notification: Omit<Notification, 'id' | 'user_id' | 'created_at' | 'read_at'> & { user_id: string }) => void;
 }
 
+// Module-level deduplication guards (not reactive — no need to be in Zustand state)
+let _notifLoadPromise: Promise<void> | null = null;
+let _notifLoadUserId: string | null = null;
+let _notifSubscribed: string | null = null; // tracks current subscribed userId
+
 export const useNotificationStore = create<NotificationState>((set, get) => ({
   notifications: [],
   unreadCount: 0,
@@ -62,28 +67,39 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
   hasNewNotification: false,
 
   load: async (userId) => {
-    set({ loading: true });
-    try {
-      const { data, error } = await supabase
-        .from('notifications')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(50);
+    // Deduplicate: if already loading for this user, return the same promise
+    if (_notifLoadPromise && _notifLoadUserId === userId) return _notifLoadPromise;
+    _notifLoadUserId = userId;
+    _notifLoadPromise = (async () => {
+      set({ loading: true });
+      try {
+        const { data, error } = await supabase
+          .from('notifications')
+          .select('id, user_id, type, title, message, is_read, created_at, read_at, target_url, metadata')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(50);
 
-      if (error) throw error;
+        if (error) throw error;
 
-      const notifications = (data ?? []) as Notification[];
-      const unreadCount = notifications.filter((n) => !n.is_read).length;
-      set({ notifications, unreadCount });
-    } catch (err) {
-      if (import.meta.env.DEV) console.warn('[notificationStore] load error:', err);
-    } finally {
-      set({ loading: false });
-    }
+        const notifications = (data ?? []) as Notification[];
+        const unreadCount = notifications.filter((n) => !n.is_read).length;
+        set({ notifications, unreadCount });
+      } catch (err) {
+        if (import.meta.env.DEV) console.warn('[notificationStore] load error:', err);
+      } finally {
+        set({ loading: false });
+        _notifLoadPromise = null;
+      }
+    })();
+    return _notifLoadPromise;
   },
 
   subscribe: (userId) => {
+    // If already subscribed for this user, return a no-op cleanup
+    if (_notifSubscribed === userId) return () => {};
+    _notifSubscribed = userId;
+
     const channel = supabase
       .channel(`notifications:${userId}`)
       .on(
@@ -126,6 +142,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       .subscribe();
 
     return () => {
+      _notifSubscribed = null;
       supabase.removeChannel(channel);
     };
   },

@@ -1,5 +1,3 @@
-import { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
 import GameCard from '../components/GameCard';
 import { NEW_ARRIVAL_GAMES } from '../config/mockData';
 
@@ -8,14 +6,8 @@ interface NewArrivalsSectionProps {
   onSeeAll?: () => void;
 }
 
+// NEW_ARRIVAL_GAMES is a compile-time constant — no async load or artificial delay needed.
 export default function NewArrivalsSection({ onGameClick, onSeeAll }: NewArrivalsSectionProps) {
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 1000);
-    return () => clearTimeout(timer);
-  }, []);
-
   return (
     <section className="px-4 sm:px-6 md:px-10 py-4">
       {/* Header */}
@@ -40,7 +32,7 @@ export default function NewArrivalsSection({ onGameClick, onSeeAll }: NewArrival
        *  mobile  (<480px) → 2 cols
        *  ≥480px           → 3 cols
        *  ≥768px           → 4 cols
-       *  ≥1024px          → 6 cols  ← all 6 fill the row with no gap on right
+       *  ≥1024px          → 6 cols
        */}
       <style>{`
         .na-grid {
@@ -54,36 +46,18 @@ export default function NewArrivalsSection({ onGameClick, onSeeAll }: NewArrival
         @media (min-width: 1024px) { .na-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
       `}</style>
 
-      {loading ? (
-        <div className="na-grid">
-          {NEW_ARRIVAL_GAMES.map((_, i) => (
-            <div
-              key={i}
-              className="relative rounded-xl overflow-hidden bg-white/5"
-              style={{ height: 110 }}
-            >
-              <motion.div
-                className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent"
-                animate={{ x: ['-100%', '100%'] }}
-                transition={{ duration: 1.2, repeat: Infinity, ease: 'linear' }}
-              />
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="na-grid">
-          {NEW_ARRIVAL_GAMES.map((game) => (
-            <GameCard
-              key={game.id}
-              id={game.id}
-              title={game.title}
-              thumbnail={game.thumbnail}
-              badge={game.badge}
-              onClick={() => onGameClick(game.id, game.title)}
-            />
-          ))}
-        </div>
-      )}
+      <div className="na-grid">
+        {NEW_ARRIVAL_GAMES.map((game) => (
+          <GameCard
+            key={game.id}
+            id={game.id}
+            title={game.title}
+            thumbnail={game.thumbnail}
+            badge={game.badge}
+            onClick={() => onGameClick(game.id, game.title)}
+          />
+        ))}
+      </div>
     </section>
   );
 }

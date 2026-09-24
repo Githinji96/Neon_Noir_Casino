@@ -190,7 +190,8 @@ export default function FinancePage() {
     let query = supabase
       .from('transactions')
       .select('id, created_at, amount, type, status, mpesa_receipt, phone, approved_at, approved_by, rejection_reason, user_id, profiles(username)')
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(1000);
 
     if (start) query = query.gte('created_at', `${start}T00:00:00`);
     if (end)   query = query.lte('created_at', `${end}T23:59:59`);

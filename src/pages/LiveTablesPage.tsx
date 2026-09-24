@@ -5,6 +5,7 @@ import Navbar from '../components/Navbar';
 import BottomNav from '../components/BottomNav';
 import ParticleBackground from '../components/ParticleBackground';
 import TableCard from '../components/live/TableCard';
+import AuthModal from '../components/AuthModal';
 import { useLiveTablesStore } from '../store/liveTablesStore';
 import { useAuthStore } from '../store/authStore';
 import { useGameStore } from '../store/gameStore';
@@ -14,6 +15,14 @@ export default function LiveTablesPage() {
   const navigate = useNavigate();
   const [activeCategory, setActiveCategory] = useState<GameType | 'all'>('all');
   const [alertMsg, setAlertMsg] = useState('');
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+
+  // Auto-dismiss the insufficient-balance alert after 4s
+  useEffect(() => {
+    if (!alertMsg) return;
+    const t = setTimeout(() => setAlertMsg(''), 4000);
+    return () => clearTimeout(t);
+  }, [alertMsg]);
 
   const tables = useLiveTablesStore((s) => s.tables);
   const startPolling = useLiveTablesStore((s) => s.startPolling);
@@ -32,7 +41,8 @@ export default function LiveTablesPage() {
 
   const handleJoin = (table: LiveTable) => {
     if (!user) {
-      setAlertMsg('Please sign in to join a live table.');
+      // Show sign-in modal instead of a toast
+      setAuthModalOpen(true);
       return;
     }
     if (balance < table.minBet) {
@@ -65,8 +75,7 @@ export default function LiveTablesPage() {
           </div>
         </div>
 
-        {/* Category tabs — scrollable strip pinned to full viewport width so overflow-x-hidden
-            on a parent can't clip it. Uses a thin neon scrollbar on mobile. */}
+        {/* Category tabs */}
         <div
           className="tabs-scroll-strip mb-6"
           style={{ width: '100vw', marginLeft: 'calc(-1 * ((100vw - 100%) / 2))', overflowX: 'auto' }}
@@ -94,19 +103,32 @@ export default function LiveTablesPage() {
           </div>
         </div>
 
-        {/* Alert */}
         <div className="px-3 sm:px-6">
+          {/* Insufficient balance alert — fixed bottom toast on mobile */}
           <AnimatePresence>
             {alertMsg && (
               <motion.div
-                initial={{ opacity: 0, y: -10 }}
+                initial={{ opacity: 0, y: 40 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="mb-4 flex items-center justify-between gap-3 px-4 py-3 rounded-xl text-sm"
-                style={{ background: 'rgba(255,68,68,0.15)', border: '1px solid rgba(255,68,68,0.3)', color: '#ff8888' }}
+                exit={{ opacity: 0, y: 40 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                className="fixed left-0 right-0 z-[200] flex items-center justify-between gap-3 mx-3 px-4 py-3 rounded-2xl text-sm shadow-2xl"
+                style={{
+                  bottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)',
+                  background: 'rgba(15, 8, 25, 0.97)',
+                  border: '1px solid rgba(255,68,68,0.5)',
+                  boxShadow: '0 0 24px rgba(255,68,68,0.25)',
+                  color: '#ff9999',
+                }}
               >
-                <span>⚠️ {alertMsg}</span>
-                <button onClick={() => setAlertMsg('')} className="text-gray-400 hover:text-white text-lg leading-none">×</button>
+                <span className="font-orbitron text-xs tracking-wide">⚠️ {alertMsg}</span>
+                <button
+                  onClick={() => setAlertMsg('')}
+                  className="text-white/40 hover:text-white text-xl leading-none shrink-0"
+                  aria-label="Dismiss"
+                >
+                  ×
+                </button>
               </motion.div>
             )}
           </AnimatePresence>
@@ -132,6 +154,9 @@ export default function LiveTablesPage() {
       </main>
 
       <BottomNav />
+
+      {/* Sign-in modal — shown when logged-out user clicks JOIN TABLE */}
+      <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} />
     </div>
   );
 }

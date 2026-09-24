@@ -346,3 +346,32 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   },
 }));
+
+// ── Module-level: live-sync admin game config changes to the running game ─────
+// When an admin edits min_bet/max_bet in the admin panel, the UPDATE event fires
+// here. If the updated game_id matches the game currently running, the bet limits
+// are applied immediately without requiring a page reload.
+setTimeout(() => {
+  supabase
+    .channel('admin-game-config-live')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'admin_game_config' },
+      ({ new: row }) => {
+        const state = useGameStore.getState();
+        // Cast to any for runtime-only payload typing
+        const r = row as any;
+        // Only apply if the changed game is the one currently active
+        if (!r || r.game_id !== state.activeGameId) return;
+        // Never override the mega jackpot fixed-bet lock
+        if (state.activeGameId === 'mega-moolah-noir') return;
+
+        let minBet = Number(r.min_bet ?? 1);
+        let maxBet = Number(r.max_bet ?? 10_000);
+        if (minBet >= maxBet) { minBet = 1; maxBet = 10_000; }
+        const clampedBet = Math.min(Math.max(state.bet, minBet), maxBet);
+        useGameStore.setState({ minBet, maxBet, bet: clampedBet });
+      }
+    )
+    .subscribe();
+}, 500);
