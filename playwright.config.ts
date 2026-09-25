@@ -17,8 +17,11 @@
 const BASE_URL   = process.env.BASE_URL   ?? 'http://localhost:5173';
 const AUTH_STATE = 'e2e/.auth/auth-state.json';
 
-// Detect system Chrome or Edge — whichever is present
+// In CI: BROWSER_CHANNEL is set to '' → Playwright uses bundled Chromium.
+// Locally: defaults to 'msedge' (or 'chrome' if you prefer).
 const BROWSER_CHANNEL = process.env.BROWSER_CHANNEL ?? 'msedge';
+// When channel is empty string, pass undefined so Playwright uses bundled browser
+const resolvedChannel = BROWSER_CHANNEL || undefined;
 
 /** Specs that require saved auth state — excluded from the desktop project,
  *  run only under chromium-auth which loads e2e/.auth/auth-state.json */
@@ -55,32 +58,32 @@ export default defineConfig({
     video:      'on-first-retry',
     ignoreHTTPSErrors: true,
     viewport: { width: 1440, height: 900 },
-    channel: BROWSER_CHANNEL,
+    channel: resolvedChannel,
   },
 
   projects: [
     /* ── Desktop — anonymous specs + auth.spec (uses loginViaUI) ────── */
     {
       name: 'desktop',
-      use: { channel: BROWSER_CHANNEL, viewport: { width: 1440, height: 900 } },
+      use: { channel: resolvedChannel, viewport: { width: 1440, height: 900 } },
       testIgnore: AUTH_ONLY_SPECS,
     },
 
     /* ── Other viewports — anonymous specs only ──────────────────── */
     {
       name: 'laptop',
-      use: { channel: BROWSER_CHANNEL, viewport: { width: 1366, height: 768 } },
+      use: { channel: resolvedChannel, viewport: { width: 1366, height: 768 } },
       testIgnore: AUTH_ONLY_SPECS,
     },
     {
       name: 'tablet',
-      use: { channel: BROWSER_CHANNEL, viewport: { width: 768, height: 1024 } },
+      use: { channel: resolvedChannel, viewport: { width: 768, height: 1024 } },
       testIgnore: AUTH_ONLY_SPECS,
     },
     {
       name: 'mobile',
       use: {
-        channel: BROWSER_CHANNEL,
+        channel: resolvedChannel,
         viewport: { width: 390, height: 844 },
         userAgent:
           'Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 ' +
@@ -95,7 +98,7 @@ export default defineConfig({
     {
       name: 'chromium-auth',
       use: {
-        channel: BROWSER_CHANNEL,
+        channel: resolvedChannel,
         viewport: { width: 1440, height: 900 },
         storageState: AUTH_STATE,
       },
@@ -113,7 +116,7 @@ export default defineConfig({
     {
       name: 'live-tables',
       use: {
-        channel: BROWSER_CHANNEL,
+        channel: resolvedChannel,
         viewport: { width: 1440, height: 900 },
       },
       testMatch: ['**/liveTables.spec.ts'],
@@ -122,7 +125,7 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: 'npm run dev',
+    command: process.env.CI ? 'npm run preview -- --port 4173' : 'npm run dev',
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,
