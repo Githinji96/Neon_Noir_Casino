@@ -1,14 +1,14 @@
 import { Page, BrowserContext } from '@playwright/test';
+import { TEST_PLAYER } from '../fixtures/testUsers';
 
 /**
- * Real test account credentials.
- * Override via environment variables in CI so the password is never committed
- * to source control in CI pipelines:
- *   TEST_USER_EMAIL / TEST_USER_PASSWORD
+ * Real test account credentials — loaded from environment variables only.
+ * Set TEST_USER_EMAIL and TEST_USER_PASSWORD in CI secrets or .env.test locally.
+ * See e2e/fixtures/testUsers.ts for details.
  */
 export const TEST_CREDENTIALS = {
-  email:    process.env.TEST_USER_EMAIL    ?? 'bonfacegithinji64@gmail.com',
-  password: process.env.TEST_USER_PASSWORD ?? 'Bg33173375#',
+  email:    TEST_PLAYER.email,
+  password: TEST_PLAYER.password,
 };
 
 /**

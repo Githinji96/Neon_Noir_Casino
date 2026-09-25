@@ -128,6 +128,8 @@ export default defineConfig({
     command: process.env.CI ? 'npm run preview -- --port 4173' : 'npm run dev',
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,
-    timeout: 60_000,
+    timeout: 120_000,  // 2 minutes — CI runners can be slow to start
+    stdout: 'pipe',
+    stderr: 'pipe',
   },
 });

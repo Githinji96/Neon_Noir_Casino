@@ -1,24 +1,21 @@
 // ─── Test User Credentials ────────────────────────────────────────────────────
-// Set these environment variables before running e2e tests:
+// Set these environment variables before running authenticated e2e tests:
 //   TEST_USER_EMAIL    — the test player's email address
 //   TEST_USER_PASSWORD — the test player's password
 //
-// Example (.env.test or CI secrets):
-//   TEST_USER_EMAIL=your-test-user@example.com
-//   TEST_USER_PASSWORD=your-test-password
+// For CI: add as GitHub Actions repository secrets.
+// Locally: create a .env.test file (gitignored) or set them in your shell.
 //
-// NEVER commit real credentials here. Use environment variables only.
+// If not set, auth-dependent tests will fall back to anonymous mode via
+// globalSetup's try/catch — unauthenticated tests still run normally.
 
-if (!process.env.TEST_USER_EMAIL || !process.env.TEST_USER_PASSWORD) {
-  throw new Error(
-    'E2E tests require TEST_USER_EMAIL and TEST_USER_PASSWORD environment variables. ' +
-    'Create a .env.test file or set them in your CI secrets.'
-  );
+if (process.env.TEST_USER_EMAIL && !process.env.TEST_USER_PASSWORD) {
+  console.warn('[testUsers] TEST_USER_EMAIL is set but TEST_USER_PASSWORD is missing.');
 }
 
 export const TEST_PLAYER = {
-  email:    process.env.TEST_USER_EMAIL,
-  password: process.env.TEST_USER_PASSWORD,
+  email:    process.env.TEST_USER_EMAIL    ?? '',
+  password: process.env.TEST_USER_PASSWORD ?? '',
 };
 
 /** Minimum balance the test player must have to run betting tests. */

@@ -67,7 +67,6 @@ jobs:
           fi
 
           npx playwright test $ARGS
-
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4
         if: always()  # upload even on test failure so you can inspect results
