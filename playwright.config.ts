@@ -125,10 +125,10 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: process.env.CI ? 'npm run preview -- --port 4173' : 'npm run dev',
+    command: process.env.CI ? 'npx vite preview --port 4173 --host' : 'npm run dev',
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,
-    timeout: 120_000,  // 2 minutes — CI runners can be slow to start
+    timeout: 120_000,
     stdout: 'pipe',
     stderr: 'pipe',
   },

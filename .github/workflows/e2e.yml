@@ -48,6 +48,16 @@ jobs:
       - name: Build app for preview
         run: npm run build
 
+      - name: Verify built app contains Supabase config
+        run: |
+          # Check the built JS contains a real Supabase URL (not empty/placeholder)
+          if grep -r "supabase.co" dist/ --include="*.js" -l | head -1 > /dev/null 2>&1; then
+            echo "✅ Supabase URL found in build output"
+          else
+            echo "❌ WARNING: Supabase URL not found in build. Check VITE_SUPABASE_URL secret."
+            echo "Build env VITE_SUPABASE_URL is set: ${{ secrets.VITE_SUPABASE_URL != '' }}"
+          fi
+
       - name: Install Playwright browsers
         # Only installs Chromium — faster than installing all browsers
         run: npx playwright install chromium --with-deps
