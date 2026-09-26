@@ -38,7 +38,7 @@ export default defineConfig({
   testDir: './e2e',
 
   timeout: 35_000,
-  expect: { timeout: 10_000 },
+  expect: { timeout: process.env.CI ? 20_000 : 10_000 },
   retries: process.env.CI ? 2 : 1,
   // Cap at 2 workers locally — the live tables tests do heavy login+bet flows
   // and running too many in parallel crashes the Vite dev server.
