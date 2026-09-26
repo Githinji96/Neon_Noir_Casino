@@ -1,5 +1,5 @@
 ﻿import { create } from 'zustand';
-import { getAuthErrorMessage, isTransientAuthError, supabase, type Profile } from '../lib/supabase';
+import { getAuthErrorMessage, supabase, type Profile } from '../lib/supabase';
 import type { User } from '@supabase/supabase-js';
 import { setAuthUserGetter, useGameStore, isSpinPending } from './gameStore';
 
