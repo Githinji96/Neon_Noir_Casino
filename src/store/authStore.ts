@@ -162,14 +162,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         setTimeout(() => reject(new Error('Request timed out. Check your connection and try again.')), 10000)
       );
 
-      for (let attempt = 0; attempt < 2; attempt += 1) {
-        try {
-          const { data, error } = await Promise.race([
-            supabase.auth.signInWithPassword({ email, password }),
-            timeoutPromise,
-          ]);
-          if (error) return error.message;
-          if (!data?.user) return 'Sign in failed. Please try again.';
+      const { data, error } = await Promise.race([
+        supabase.auth.signInWithPassword({ email, password }),
+        timeoutPromise,
+      ]);
+      if (error) return error.message;
+      if (!data?.user) return 'Sign in failed. Please try again.';
 
           // Check account_status before allowing access
           const { data: profile } = await supabase
@@ -188,15 +186,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           }
 
           return null;
-        } catch (err) {
-          if (attempt === 0 && isTransientAuthError(err)) {
-            continue;
-          }
-          return getAuthErrorMessage(err);
-        }
-      }
-
-      return 'The authentication service could not be reached. Please check your connection and try again.';
     } catch (err) {
       return getAuthErrorMessage(err);
     }

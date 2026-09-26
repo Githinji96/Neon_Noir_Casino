@@ -16,21 +16,38 @@ export const TEST_CREDENTIALS = {
  * Returns when the balance element or main lobby is visible.
  */
 export async function loginViaUI(page: Page): Promise<void> {
+  // Debug: confirm credentials are loaded (shows email prefix only, never password)
+  const emailPrefix = TEST_CREDENTIALS.email.split('@')[0];
+  console.log(`[loginViaUI] Using email: ${emailPrefix}@...`);
+
+  if (!TEST_CREDENTIALS.email || !TEST_CREDENTIALS.password) {
+    throw new Error('TEST_USER_EMAIL or TEST_USER_PASSWORD is not set. Check .env.test or CI secrets.');
+  }
+
   await page.goto('/auth/login');
+  // Wait for the form to be ready
+  await page.getByPlaceholder('player@example.com').waitFor({ state: 'visible', timeout: 10_000 });
   await page.getByPlaceholder('player@example.com').fill(TEST_CREDENTIALS.email);
   await page.getByPlaceholder('Enter your password').fill(TEST_CREDENTIALS.password);
+
+  // Verify values actually registered in the React-controlled inputs
+  const emailVal = await page.getByPlaceholder('player@example.com').inputValue();
+  const passVal  = await page.getByPlaceholder('Enter your password').inputValue();
+  console.log(`[loginViaUI] Email field value: "${emailVal}"`);
+  console.log(`[loginViaUI] Password field length: ${passVal.length} chars (expected ${TEST_CREDENTIALS.password.length})`);
+
   await page.getByRole('button', { name: /^sign in$/i }).click();
 
-  // Wait for either successful redirect to home or a visible error
-  await page.waitForURL('/', { timeout: 15_000 }).catch(async () => {
-    // If still on login, auth may have failed — surface a clear error
+  // Wait for either successful redirect or a visible error
+  await page.waitForURL((url) => !url.pathname.startsWith('/auth/'), { timeout: 20_000 }).catch(async () => {
+    // Still on an auth page — check for error
     const errorEl = page.locator('[class*="AuthAlert"], [role="alert"]').first();
     const visible  = await errorEl.isVisible().catch(() => false);
     if (visible) {
       const msg = await errorEl.textContent();
       throw new Error(`Login failed: ${msg}`);
     }
-    // Otherwise may have taken a different redirect — continue
+    throw new Error('Login timed out — still on auth page after 20s. Check credentials and account status.');
   });
 }
 

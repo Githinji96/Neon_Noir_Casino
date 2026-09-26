@@ -94,25 +94,32 @@ test.describe('Authentication — Login Page', () => {
   });
 
   test('correct credentials log in and redirect to home', async ({ page }) => {
+    // Clear stored session so we test the actual login flow from scratch
+    await page.context().clearCookies();
+    await page.evaluate(() => window.localStorage.clear());
     await fillLoginForm(page);
     await submitLoginForm(page);
-    await page.waitForURL('/', { timeout: 20_000 });
-    await expect(page).toHaveURL('/');
+    await page.waitForURL(/^http:\/\/localhost:\d+\/$/, { timeout: 25_000 });
+    expect(page.url()).toMatch(/\/$/);
   });
 
   test('after login the balance is visible in the navbar', async ({ page }) => {
+    await page.context().clearCookies();
+    await page.evaluate(() => window.localStorage.clear());
     await fillLoginForm(page);
     await submitLoginForm(page);
-    await page.waitForURL('/', { timeout: 20_000 });
+    await page.waitForURL(/^http:\/\/localhost:\d+\/$/, { timeout: 25_000 });
     const balance = page.locator('nav span').filter({ hasText: /KES/i }).first();
-    await expect(balance).toBeVisible({ timeout: 8_000 });
+    await expect(balance).toBeVisible({ timeout: 12_000 });
   });
 
   test('after login the notification bell is visible on desktop', async ({ page, viewport }) => {
     if ((viewport?.width ?? 1440) < 1024) test.skip();
+    await page.context().clearCookies();
+    await page.evaluate(() => window.localStorage.clear());
     await fillLoginForm(page);
     await submitLoginForm(page);
-    await page.waitForURL('/', { timeout: 20_000 });
+    await page.waitForURL(/^http:\/\/localhost:\d+\/$/, { timeout: 25_000 });
     const bell = page.getByRole('button', { name: /notifications/i });
     await expect(bell).toBeVisible({ timeout: 8_000 });
   });

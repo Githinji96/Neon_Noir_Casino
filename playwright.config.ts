@@ -1,9 +1,7 @@
 ﻿import { defineConfig } from '@playwright/test';
-import { config } from 'dotenv';
 
-// Load .env.test for local development (gitignored — never committed).
-// In CI, secrets are injected directly as environment variables.
-config({ path: '.env.test', override: false });
+// .env.test is loaded automatically via the npm script (see package.json)
+// or by passing --env-file=.env.test to node directly.
 
 /**
  * Neon Noir Casino — Playwright configuration
