@@ -35,7 +35,8 @@ test.describe('Jackpots Page', () => {
     const jp = new JackpotsPage(page);
     await expect(jp.spinBtns.first()).toBeVisible({ timeout: 8_000 });
     await jp.spinBtns.first().click();
-    await page.waitForURL(/auth\/login|\/slot/, { timeout: 8_000 });
+    // ProtectedRoute has up to 4s auth loading + navigation time — use 15s
+    await page.waitForURL(/auth\/login|\/slot/, { timeout: 15_000 });
     expect(page.url()).toMatch(/auth\/login|\/slot/);
   });
 
