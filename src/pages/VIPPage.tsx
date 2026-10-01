@@ -87,7 +87,8 @@ export default function VIPPage() {
           <p className="text-white/40 text-sm mt-2">Earn points. Unlock rewards. Rise through the ranks.</p>
         </div>
 
-        {/* Current Level Card */}
+        {/* Current Level Card — only shown when logged in */}
+        {user ? (
         <motion.div
           initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
           className="rounded-2xl p-6 mb-6"
@@ -139,6 +140,28 @@ export default function VIPPage() {
             </p>
           )}
         </motion.div>
+        ) : (
+          /* Guest prompt — sign in to see your VIP level */
+          <motion.div
+            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+            className="rounded-2xl p-6 mb-6 text-center"
+            style={{
+              background: 'rgba(255,215,0,0.06)',
+              border: '1px solid rgba(255,215,0,0.2)',
+            }}
+          >
+            <span className="text-4xl">👑</span>
+            <p className="font-orbitron text-lg font-bold text-white mt-3 mb-1">Sign in to see your VIP level</p>
+            <p className="text-white/40 text-sm mb-4">Your points and tier progress are tracked when you play.</p>
+            <Link
+              to="/auth/login"
+              className="inline-block px-8 py-2.5 rounded-xl font-orbitron text-sm font-bold text-black"
+              style={{ background: 'linear-gradient(135deg, #FFD700, #FFA500)' }}
+            >
+              SIGN IN
+            </Link>
+          </motion.div>
+        )}
 
         {/* Weekly Cashback */}
         {user && (

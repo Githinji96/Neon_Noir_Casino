@@ -193,6 +193,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   signOut: async () => {
     set({ user: null, profile: null });
+    // Clear persisted VIP data so a signed-out user doesn't see the previous
+    // player's points/tier on the VIP page
+    try { localStorage.removeItem('neon-noir-vip'); } catch { /* ignore */ }
+    // Reset in-memory VIP state immediately
+    const { useVIPStore } = await import('./vipStore');
+    useVIPStore.setState({
+      totalPoints: 0,
+      monthlyPoints: 0,
+      currentTier: (await import('../config/vipConfig')).getTierForPoints(0),
+      currentWeekCashback: null,
+      cashbackHistory: [],
+    });
     await supabase.auth.signOut();
   },
 

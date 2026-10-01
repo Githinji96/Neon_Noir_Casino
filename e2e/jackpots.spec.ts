@@ -36,15 +36,10 @@ test.describe('Jackpots Page', () => {
     await expect(jp.spinBtns.first()).toBeVisible({ timeout: 8_000 });
     await jp.spinBtns.first().click();
 
-    // The app navigates to /slot first (ProtectedRoute), then redirects to
-    // /auth/login if unauthenticated. The ProtectedRoute auth check can take
-    // up to 4s (safety timeout) + Supabase network latency.
-    // Wait for either the login page or the slot page to fully render.
-    await Promise.race([
-      page.waitForURL(/auth\/login/, { timeout: 30_000 }),
-      page.locator('text=SPIN').waitFor({ state: 'visible', timeout: 30_000 }),
-    ]).catch(() => {}); // one branch will resolve, other rejects — ignore the reject
-
+    // The app navigates to /slot (ProtectedRoute), which then redirects
+    // to /auth/login when unauthenticated. The auth check has a 4s safety
+    // timeout — allow up to 30s total for the full redirect chain.
+    await page.waitForURL(/auth\/login|\/slot/, { timeout: 30_000 });
     expect(page.url()).toMatch(/auth\/login|\/slot/);
   });
 
