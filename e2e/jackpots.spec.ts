@@ -31,16 +31,15 @@ test.describe('Jackpots Page', () => {
     await expect(jp.spinBtns.first()).toBeEnabled({ timeout: 8_000 });
   });
 
-  test('clicking SPIN NOW redirects to login or slot', async ({ page }) => {
+  test('clicking SPIN NOW redirects to login when not signed in', async ({ page }) => {
     const jp = new JackpotsPage(page);
     await expect(jp.spinBtns.first()).toBeVisible({ timeout: 8_000 });
     await jp.spinBtns.first().click();
 
-    // The app navigates to /slot (ProtectedRoute), which then redirects
-    // to /auth/login when unauthenticated. The auth check has a 4s safety
-    // timeout — allow up to 30s total for the full redirect chain.
-    await page.waitForURL(/auth\/login|\/slot/, { timeout: 30_000 });
-    expect(page.url()).toMatch(/auth\/login|\/slot/);
+    // Anonymous users: /slot is a ProtectedRoute — it redirects to /auth/login.
+    // Allow up to 30s for the ProtectedRoute auth check (4s safety timeout) + navigation.
+    await page.waitForURL(/auth\/login/, { timeout: 30_000 });
+    expect(page.url()).toContain('/auth/login');
   });
 
   test('jackpot amount text (KES) is visible on at least one card', async ({ page }) => {
