@@ -164,7 +164,7 @@ test.describe('Live Tables — Lobby (anonymous)', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 test.describe('Blackjack — Game Room (authenticated)', () => {
   test.beforeEach(async ({ page }) => {
-    await loginViaUI(page);
+    // storageState already provides auth — no need to login via UI
     await page.goto('/live-tables');
     await waitForPageReady(page);
     const lt = new LiveTablesPage(page);
@@ -309,7 +309,6 @@ test.describe('Blackjack — Game Room (authenticated)', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 test.describe('Roulette — Game Room (authenticated)', () => {
   test.beforeEach(async ({ page }) => {
-    await loginViaUI(page);
     await page.goto('/live-tables');
     await waitForPageReady(page);
     const lt = new LiveTablesPage(page);
@@ -400,7 +399,6 @@ test.describe('Roulette — Game Room (authenticated)', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 test.describe('Baccarat — Game Room (authenticated)', () => {
   test.beforeEach(async ({ page }) => {
-    await loginViaUI(page);
     await page.goto('/live-tables');
     await waitForPageReady(page);
     const lt = new LiveTablesPage(page);
@@ -487,7 +485,6 @@ test.describe('Baccarat — Game Room (authenticated)', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 test.describe('Poker — Game Room (authenticated)', () => {
   test.beforeEach(async ({ page }) => {
-    await loginViaUI(page);
     await page.goto('/live-tables');
     await waitForPageReady(page);
     const lt = new LiveTablesPage(page);
@@ -540,7 +537,6 @@ test.describe('Poker — Game Room (authenticated)', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 test.describe('Live Tables — Navigation (authenticated)', () => {
   test.beforeEach(async ({ page }) => {
-    await loginViaUI(page);
     await page.goto('/live-tables');
     await waitForPageReady(page);
   });

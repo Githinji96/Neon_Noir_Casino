@@ -94,21 +94,39 @@ test.describe('Authentication — Login Page', () => {
   });
 
   test('correct credentials log in and redirect to home', async ({ page }) => {
-    // Clear stored session so we test the actual login flow from scratch
+    // Clear ALL storage including storageState so we truly start fresh
     await page.context().clearCookies();
-    await page.evaluate(() => { try { localStorage.clear(); } catch { /* ignore */ } });
-    await fillLoginForm(page);
-    await submitLoginForm(page);
-    // Wait for redirect away from /auth/login — accepts both port 5173 (dev) and 4173 (CI preview)
+    await page.evaluate(() => {
+      try { localStorage.clear(); sessionStorage.clear(); } catch { /* ignore */ }
+    });
+    // Now navigate to login — no existing session
+    await page.goto('/auth/login');
+    await page.waitForLoadState('networkidle');
+    await page.getByPlaceholder('player@example.com').fill(
+      process.env.TEST_USER_EMAIL ?? ''
+    );
+    await page.getByPlaceholder('Enter your password').fill(
+      process.env.TEST_USER_PASSWORD ?? ''
+    );
+    await page.getByRole('button', { name: /^sign in$/i }).click();
     await page.waitForURL((url) => url.pathname === '/', { timeout: 25_000 });
     expect(page.url()).toContain('/');
   });
 
   test('after login the balance is visible in the navbar', async ({ page }) => {
     await page.context().clearCookies();
-    await page.evaluate(() => { try { localStorage.clear(); } catch { /* ignore */ } });
-    await fillLoginForm(page);
-    await submitLoginForm(page);
+    await page.evaluate(() => {
+      try { localStorage.clear(); sessionStorage.clear(); } catch { /* ignore */ }
+    });
+    await page.goto('/auth/login');
+    await page.waitForLoadState('networkidle');
+    await page.getByPlaceholder('player@example.com').fill(
+      process.env.TEST_USER_EMAIL ?? ''
+    );
+    await page.getByPlaceholder('Enter your password').fill(
+      process.env.TEST_USER_PASSWORD ?? ''
+    );
+    await page.getByRole('button', { name: /^sign in$/i }).click();
     await page.waitForURL((url) => url.pathname === '/', { timeout: 25_000 });
     const balance = page.locator('nav span').filter({ hasText: /KES/i }).first();
     await expect(balance).toBeVisible({ timeout: 12_000 });
@@ -117,9 +135,18 @@ test.describe('Authentication — Login Page', () => {
   test('after login the notification bell is visible on desktop', async ({ page, viewport }) => {
     if ((viewport?.width ?? 1440) < 1024) test.skip();
     await page.context().clearCookies();
-    await page.evaluate(() => { try { localStorage.clear(); } catch { /* ignore */ } });
-    await fillLoginForm(page);
-    await submitLoginForm(page);
+    await page.evaluate(() => {
+      try { localStorage.clear(); sessionStorage.clear(); } catch { /* ignore */ }
+    });
+    await page.goto('/auth/login');
+    await page.waitForLoadState('networkidle');
+    await page.getByPlaceholder('player@example.com').fill(
+      process.env.TEST_USER_EMAIL ?? ''
+    );
+    await page.getByPlaceholder('Enter your password').fill(
+      process.env.TEST_USER_PASSWORD ?? ''
+    );
+    await page.getByRole('button', { name: /^sign in$/i }).click();
     await page.waitForURL((url) => url.pathname === '/', { timeout: 25_000 });
     const bell = page.getByRole('button', { name: /notifications/i });
     await expect(bell).toBeVisible({ timeout: 8_000 });
