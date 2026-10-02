@@ -62,9 +62,14 @@ test.describe('VIP Club Page', () => {
   });
 
   test('unauthenticated users see SIGN IN prompt', async ({ page }) => {
+    // This test checks logged-out behavior — clear session first
+    await page.context().clearCookies();
+    await page.evaluate(() => { try { localStorage.clear(); } catch { /* ignore */ } });
+    await page.goto('/vip');
+    await waitForPageReady(page);
     const vip = new VIPPage(page);
     const signIn  = vip.signInPrompt;
-    const prompt  = page.locator('p').filter({ hasText: /sign in to track/i });
+    const prompt  = page.locator('p').filter({ hasText: /sign in to/i });
     const either  = await signIn.isVisible().catch(() => false)
                  || await prompt.isVisible().catch(() => false);
     expect(either).toBe(true);

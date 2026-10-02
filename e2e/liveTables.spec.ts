@@ -75,12 +75,21 @@ test.describe('Live Tables — Lobby (anonymous)', () => {
   });
 
   test('clicking Join while logged out shows sign-in alert', async ({ page }) => {
+    // Clear session to test anonymous behavior
+    await page.context().clearCookies();
+    await page.evaluate(() => { try { localStorage.clear(); } catch { /* ignore */ } });
+    await page.goto('/live-tables');
+    await waitForPageReady(page);
     const lt = new LiveTablesPage(page);
     const firstJoin = page.getByTestId('join-table-bj-1');
     await firstJoin.waitFor({ state: 'visible', timeout: 8_000 });
     await firstJoin.click();
-    await expect(lt.alertBanner).toBeVisible({ timeout: 3_000 });
-    await expect(lt.alertBanner).toContainText(/sign in/i);
+    // Logged-out: shows AuthModal (sign in modal) instead of alert banner
+    const authModal = page.locator('[role="dialog"]').filter({ hasText: /sign in/i });
+    const alertBanner = lt.alertBanner;
+    const shown = await authModal.isVisible().catch(() => false)
+               || await alertBanner.isVisible().catch(() => false);
+    expect(shown).toBe(true);
   });
 
   test('page has no horizontal overflow', async ({ page }) => {

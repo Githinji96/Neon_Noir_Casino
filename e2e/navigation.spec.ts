@@ -87,6 +87,9 @@ test.describe('Navigation — public routes', () => {
 
   test('mobile menu shows Login when logged out', async ({ page, viewport }) => {
     if ((viewport?.width ?? 1440) >= 1024) test.skip();
+    // Clear session to test logged-out state
+    await page.context().clearCookies();
+    await page.evaluate(() => { try { localStorage.clear(); } catch { /* ignore */ } });
     await page.goto('/');
     await waitForPageReady(page);
     const navbar = new NavbarPage(page);

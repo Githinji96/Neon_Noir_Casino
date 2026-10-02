@@ -41,6 +41,11 @@ test.describe('Home Page', () => {
 
   test('LOGIN button is visible when logged out on desktop', async ({ page, viewport }) => {
     if ((viewport?.width ?? 0) < 1024) test.skip();
+    // This test checks logged-out UI — clear session first
+    await page.context().clearCookies();
+    await page.evaluate(() => { try { localStorage.clear(); } catch { /* ignore */ } });
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
     await expect(page.locator('nav').getByRole('button', { name: /^login$/i }).first()).toBeVisible();
   });
 
