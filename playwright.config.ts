@@ -26,14 +26,9 @@ const BROWSER_CHANNEL = process.env.BROWSER_CHANNEL ?? 'msedge';
 // When channel is empty string, pass undefined so Playwright uses bundled browser
 const resolvedChannel = BROWSER_CHANNEL || undefined;
 
-/** Specs that require saved auth state — excluded from the desktop project,
- *  run only under chromium-auth which loads e2e/.auth/auth-state.json */
+/** Specs that are ONLY run under chromium-auth (already have auth via storageState in
+ *  all projects now, but these specs still match only chromium-auth for backward compat) */
 const AUTH_ONLY_SPECS = [
-  '**/slot.spec.ts',          // needs chromium-auth saved state
-  '**/slot-betting.spec.ts',  // needs chromium-auth saved state
-  '**/deposit-withdraw.spec.ts',
-  '**/notifications.spec.ts',
-  '**/settings.spec.ts',
   '**/liveTables.spec.ts',    // runs under its own live-tables project
 ];
 
@@ -43,8 +38,6 @@ export default defineConfig({
   timeout: 35_000,
   expect: { timeout: process.env.CI ? 20_000 : 10_000 },
   retries: process.env.CI ? 2 : 1,
-  // Cap at 2 workers locally — the live tables tests do heavy login+bet flows
-  // and running too many in parallel crashes the Vite dev server.
   workers: process.env.CI ? 1 : 2,
 
   reporter: [
@@ -62,27 +55,34 @@ export default defineConfig({
     ignoreHTTPSErrors: true,
     viewport: { width: 1440, height: 900 },
     channel: resolvedChannel,
+    // All projects share the same saved auth state so every test runs authenticated.
+    // globalSetup saves this file before any tests run.
+    storageState: AUTH_STATE,
   },
 
   projects: [
-    /* ── Desktop — anonymous specs + auth.spec (uses loginViaUI) ────── */
+    /* ── Desktop (1440×900) ───────────────────────────────────────── */
     {
       name: 'desktop',
       use: { channel: resolvedChannel, viewport: { width: 1440, height: 900 } },
       testIgnore: AUTH_ONLY_SPECS,
     },
 
-    /* ── Other viewports — anonymous specs only ──────────────────── */
+    /* ── Laptop (1366×768) ───────────────────────────────────────── */
     {
       name: 'laptop',
       use: { channel: resolvedChannel, viewport: { width: 1366, height: 768 } },
       testIgnore: AUTH_ONLY_SPECS,
     },
+
+    /* ── Tablet (768×1024) ───────────────────────────────────────── */
     {
       name: 'tablet',
       use: { channel: resolvedChannel, viewport: { width: 768, height: 1024 } },
       testIgnore: AUTH_ONLY_SPECS,
     },
+
+    /* ── Mobile (390×844) ────────────────────────────────────────── */
     {
       name: 'mobile',
       use: {
@@ -97,7 +97,7 @@ export default defineConfig({
       testIgnore: AUTH_ONLY_SPECS,
     },
 
-    /* ── Authenticated — desktop with saved auth state ───────────── */
+    /* ── chromium-auth — auth-specific spec files ─────────────────── */
     {
       name: 'chromium-auth',
       use: {
@@ -121,6 +121,7 @@ export default defineConfig({
       use: {
         channel: resolvedChannel,
         viewport: { width: 1440, height: 900 },
+        storageState: AUTH_STATE,
       },
       testMatch: ['**/liveTables.spec.ts'],
       timeout: 60_000,
