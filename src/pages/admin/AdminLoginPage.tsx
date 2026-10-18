@@ -12,7 +12,8 @@ export default function AdminLoginPage() {
   const [loading, setLoading] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
   const [error, setError] = useState('');
-  const isTimeout = params.get('reason') === 'timeout';
+  const isTimeout    = params.get('reason') === 'timeout';
+  const isInactivity = params.get('reason') === 'inactivity';
 
   // Clear any browser-autofilled values on mount so previous credentials
   // don't persist after logout. A short delay is needed because some browsers
@@ -147,6 +148,12 @@ export default function AdminLoginPage() {
           <h1 className="font-orbitron text-3xl font-black text-[#FFD700] tracking-widest">NEON NOIR</h1>
           <p className="text-white/40 text-sm tracking-[0.3em] mt-1">ADMIN PANEL</p>
         </div>
+
+        {isInactivity && (
+          <div className="mb-4 px-4 py-3 rounded-xl bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-sm">
+            Your session expired due to inactivity. Please sign in again.
+          </div>
+        )}
 
         {isTimeout && (
           <div className="mb-4 px-4 py-3 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-400 text-sm">

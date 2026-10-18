@@ -135,9 +135,16 @@ export default function CasinoFinancialPage() {
       if (!validDate(customStart) || !validDate(customEnd)) {
         return { rangeStartIso: null, rangeEndIso: null };
       }
+      // Parse as local midnight/end-of-day to avoid UTC day-offset issues
+      const [sy, sm, sd] = customStart.split('-').map(Number);
+      const [ey, em, ed] = customEnd.split('-').map(Number);
+      const start = new Date(sy, sm - 1, sd, 0, 0, 0, 0);
+      const end   = new Date(ey, em - 1, ed, 23, 59, 59, 999);
+      // Reject invalid ranges (end before start)
+      if (end < start) return { rangeStartIso: null, rangeEndIso: null };
       return {
-        rangeStartIso: new Date(customStart + 'T00:00:00').toISOString(),
-        rangeEndIso:   new Date(customEnd   + 'T23:59:59').toISOString(),
+        rangeStartIso: start.toISOString(),
+        rangeEndIso:   end.toISOString(),
       };
     }
     const { start, end } = presetRange(preset);
@@ -274,15 +281,27 @@ export default function CasinoFinancialPage() {
           ))}
         </div>
         {preset === 'custom' && (
-          <div className="flex gap-2 items-end">
+          <div className="flex gap-2 items-center flex-wrap">
             <input type="date" value={customStart} onChange={(e) => setCustomStart(e.target.value)}
+              max={customEnd || undefined}
               className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#FFD700]/50" />
-            <span className="text-white/30 self-center">→</span>
+            <span className="text-white/30">→</span>
             <input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)}
+              min={customStart || undefined}
               className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#FFD700]/50" />
+            {customStart && customEnd && !rangeStartIso && (
+              <span className="text-red-400 text-xs font-orbitron">End date must be after start date</span>
+            )}
+            {(!customStart || !customEnd) && (
+              <span className="text-white/30 text-xs">Select both dates to apply</span>
+            )}
           </div>
         )}
-        <button onClick={() => void fetchAll()}
+        <button onClick={() => {
+            setPreset('today');
+            setCustomStart('');
+            setCustomEnd('');
+          }}
           className="ml-auto px-4 py-2 rounded-lg bg-[#FFD700]/20 hover:bg-[#FFD700]/30 text-[#FFD700] text-xs font-semibold transition-colors">
           ↻ Refresh
         </button>

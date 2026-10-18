@@ -9,6 +9,7 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     autoRefreshToken: true,
     detectSessionInUrl: true,
     storage: window.localStorage,
+    // storageKey is derived automatically from project ref — no override needed
   },
 });
 

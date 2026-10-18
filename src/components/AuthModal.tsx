@@ -6,9 +6,11 @@ import { useAuthStore } from '../store/authStore';
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /** Called after a successful login, before the modal closes. */
+  onSuccess?: () => void;
 }
 
-export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
+export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -26,7 +28,13 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
 
     setLoading(false);
     if (err) { setError(err); return; }
-    onClose();
+    // If caller provided a success handler (e.g. to navigate after login), use it.
+    // Otherwise just close the modal.
+    if (onSuccess) {
+      onSuccess();
+    } else {
+      onClose();
+    }
   };
 
   const inputClass =

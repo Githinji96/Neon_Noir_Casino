@@ -4,6 +4,7 @@ import CasinoLobby from './pages/CasinoLobby';
 import { useAuthStore } from './store/authStore';
 import { useAdminStore } from './store/adminStore';
 import AdminAuthGuard from './components/admin/AdminAuthGuard';
+import PlayerInactivityGuard from './components/PlayerInactivityGuard';
 import MusicManager from './components/MusicManager';
 import Footer from './components/Footer';
 import BottomNav from './components/BottomNav';
@@ -147,6 +148,10 @@ function AppRoutes() {
     // Single Suspense boundary wraps all routes — eliminates per-route wrapper noise
     // while still showing the spinner for any lazy-loaded page transition.
     <Suspense fallback={<PageFallback />}>
+      {/* Player inactivity guard — signs out idle players after 60 min.
+          Skipped on admin routes which have their own 30-min inactivity
+          logic inside AdminAuthGuard. */}
+      {!location.pathname.startsWith('/admin') && <PlayerInactivityGuard />}
       <Routes>
         {/* Public routes — wrapped in PublicLayout which adds the Footer */}
         <Route element={<PublicLayout />}>

@@ -41,7 +41,10 @@ export type AuditActionType =
   | 'fraud_flag_dismiss'
   | 'reset_player_wins'
   | 'reset_player_bets'
-  | 'reset_player_stats';
+  | 'reset_player_stats'
+  | 'risk_assessment_manual'
+  | 'risk_assessment_batch'
+  | 'risk_alert_generated';
 
 export interface AuditLogEntry {
   id: string;

@@ -16,6 +16,8 @@ export default function LiveTablesPage() {
   const [activeCategory, setActiveCategory] = useState<GameType | 'all'>('all');
   const [alertMsg, setAlertMsg] = useState('');
   const [authModalOpen, setAuthModalOpen] = useState(false);
+  // Remember which table the user was trying to join so we can navigate after login
+  const [pendingTable, setPendingTable] = useState<LiveTable | null>(null);
 
   // Auto-dismiss the insufficient-balance alert after 4s
   useEffect(() => {
@@ -41,7 +43,8 @@ export default function LiveTablesPage() {
 
   const handleJoin = (table: LiveTable) => {
     if (!user) {
-      // Show sign-in modal instead of a toast
+      // Remember the table, open sign-in modal
+      setPendingTable(table);
       setAuthModalOpen(true);
       return;
     }
@@ -50,6 +53,21 @@ export default function LiveTablesPage() {
       return;
     }
     navigate(`/live-tables/${table.id}`, { state: { table } });
+  };
+
+  // Called by AuthModal after a successful login
+  const handleAuthSuccess = () => {
+    setAuthModalOpen(false);
+    if (pendingTable) {
+      // Re-read balance from store after auth state settles (signIn updates it)
+      const currentBalance = useGameStore.getState().balance;
+      if (currentBalance < pendingTable.minBet) {
+        setAlertMsg(`Insufficient balance. Minimum bet is KES ${pendingTable.minBet}.`);
+      } else {
+        navigate(`/live-tables/${pendingTable.id}`, { state: { table: pendingTable } });
+      }
+      setPendingTable(null);
+    }
   };
 
   return (
@@ -104,17 +122,17 @@ export default function LiveTablesPage() {
         </div>
 
         <div className="px-3 sm:px-6">
-          {/* Insufficient balance alert — fixed bottom toast on mobile */}
+          {/* Insufficient balance alert — fixed top toast */}
           <AnimatePresence>
             {alertMsg && (
               <motion.div
-                initial={{ opacity: 0, y: 40 }}
+                initial={{ opacity: 0, y: -40 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 40 }}
+                exit={{ opacity: 0, y: -40 }}
                 transition={{ type: 'spring', stiffness: 400, damping: 30 }}
                 className="fixed left-0 right-0 z-[200] flex items-center justify-between gap-3 mx-3 px-4 py-3 rounded-2xl text-sm shadow-2xl"
                 style={{
-                  bottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)',
+                  top: 'calc(env(safe-area-inset-top, 0px) + 72px)',
                   background: 'rgba(15, 8, 25, 0.97)',
                   border: '1px solid rgba(255,68,68,0.5)',
                   boxShadow: '0 0 24px rgba(255,68,68,0.25)',
@@ -156,7 +174,11 @@ export default function LiveTablesPage() {
       <BottomNav />
 
       {/* Sign-in modal — shown when logged-out user clicks JOIN TABLE */}
-      <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} />
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => { setAuthModalOpen(false); setPendingTable(null); }}
+        onSuccess={handleAuthSuccess}
+      />
     </div>
   );
 }

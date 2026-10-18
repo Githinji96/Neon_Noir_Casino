@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
@@ -21,6 +21,15 @@ export default function LoginPage() {
   // Where to go after successful login — default to home
   const from = (location.state as { from?: { pathname: string; state?: unknown } } | null)?.from;
 
+  // Show "session expired" message when redirected here due to inactivity
+  const inactivityExpired = new URLSearchParams(location.search).get('reason') === 'inactivity';
+  // Clear the message from the URL immediately (replace history so back button is clean)
+  useEffect(() => {
+    if (inactivityExpired) {
+      navigate(location.pathname, { replace: true, state: location.state });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleOAuth = async (provider: 'google' | 'apple') => {
     setServerError('');
     setOauthLoading(provider);
@@ -30,17 +39,37 @@ export default function LoginPage() {
     // On success, Supabase redirects the browser — no navigate() needed
   };
 
-  const { register, handleSubmit, formState: { errors } } = useForm<LoginFormData>({
+  const { register, handleSubmit, formState: { errors }, clearErrors } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
+    mode: 'onSubmit',      // only validate on submit, not on every keystroke
+    reValidateMode: 'onChange', // re-validate after first submit attempt on each change
   });
 
+  // Clear stale server error whenever the user edits either field
+  const handleFieldChange = () => {
+    if (serverError) setServerError('');
+  };
+
   const onSubmit = async (data: LoginFormData) => {
+    // zod already validated — clear any stale server error before the request
     setServerError('');
     setLoading(true);
     const err = await signIn(data.email, data.password);
     setLoading(false);
     if (err) {
-      setServerError(err);
+      // Map Supabase's raw error message to a user-friendly string
+      const normalized = err.toLowerCase();
+      if (normalized.includes('invalid login credentials') || normalized.includes('invalid_credentials')) {
+        setServerError('Invalid email or password. Please try again.');
+      } else if (normalized.includes('email not confirmed')) {
+        setServerError('Please verify your email address before signing in.');
+      } else if (normalized.includes('too many requests') || normalized.includes('rate limit')) {
+        setServerError('Too many attempts. Please wait a moment and try again.');
+      } else if (normalized.includes('network') || normalized.includes('failed to fetch')) {
+        setServerError('Connection error. Please check your internet and try again.');
+      } else {
+        setServerError(err);
+      }
     } else {
       // Navigate back to where the user was trying to go, preserving state
       if (from) {
@@ -53,25 +82,47 @@ export default function LoginPage() {
 
   return (
     <AuthCard title="Welcome Back" subtitle="Sign in to your account to continue playing">
-      <form onSubmit={handleSubmit(onSubmit)} autoComplete="off" className="flex flex-col gap-4">
+      <form onSubmit={handleSubmit(onSubmit)} noValidate className="flex flex-col gap-4">
+        {/* Session-expired message — shown once after inactivity logout */}
+        {inactivityExpired && (
+          <AuthAlert
+            type="error"
+            message="Your session expired due to inactivity. Please sign in again."
+          />
+        )}
+
         {serverError && <AuthAlert type="error" message={serverError} />}
 
         <InputField
           label="Email"
-          type="email"
+          type="text"          // use text — zod handles email validation, avoids dual browser+zod errors
+          inputMode="email"    // shows email keyboard on mobile
           placeholder="player@example.com"
           icon="✉️"
-          autoComplete="off"
+          autoComplete="email"
           error={errors.email?.message}
-          {...register('email')}
+          aria-invalid={!!errors.email}
+          aria-describedby={errors.email ? 'email-error' : undefined}
+          {...register('email', {
+            onChange: () => {
+              handleFieldChange();
+              if (errors.email) clearErrors('email');
+            },
+          })}
         />
 
         <PasswordField
           label="Password"
           placeholder="Enter your password"
-          autoComplete="new-password"
+          autoComplete="current-password"
           error={errors.password?.message}
-          {...register('password')}
+          aria-invalid={!!errors.password}
+          {...register('password', {
+            onChange: () => {
+              handleFieldChange();
+              if (errors.password) clearErrors('password');
+            },
+          })}
         />
 
         {/* Remember me + Forgot password */}
