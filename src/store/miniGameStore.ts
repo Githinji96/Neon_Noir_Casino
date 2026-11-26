@@ -241,9 +241,6 @@ export const useMiniGameStore = create<MiniGameState>()((set, get) => ({
     if (error) {
       if (import.meta.env.DEV) {
         console.error('[miniGameStore] submitRound RPC error:', error);
-        supabase.auth.getSession().then(({ data: s }) => {
-          console.log('[miniGameStore] auth session user:', s.session?.user?.id ?? 'NO SESSION');
-        });
       }
       set({ roundPhase: 'error', roundError: error.message });
       return;
