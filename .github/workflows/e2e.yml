@@ -1,18 +1,35 @@
+
 name: E2E Tests (Playwright)
 
-# Only runs when manually triggered from the GitHub Actions tab.
-# Go to: Actions → E2E Tests (Playwright) → Run workflow
+# Manually triggered from GitHub Actions
 on:
   workflow_dispatch:
     inputs:
+      branch:
+        description: 'Select branch to run tests against'
+        required: true
+        type: choice
+        options:
+          - dev
+          - main
+        default: dev
+
       spec:
         description: 'Spec file to run (leave blank to run all)'
         required: false
+        type: string
         default: ''
+
       project:
         description: 'Playwright project (desktop | chromium-auth | live-tables | all)'
         required: false
-        default: 'all'
+        type: choice
+        options:
+          - all
+          - desktop
+          - chromium-auth
+          - live-tables
+        default: all
 
 jobs:
   e2e:
@@ -20,21 +37,26 @@ jobs:
     timeout-minutes: 80
 
     env:
-      # App env — needed so Vite can build/serve the app
-      VITE_SUPABASE_URL:      ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
       VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-      # Test credentials — used by e2e/fixtures/testUsers.ts and globalSetup
-      TEST_USER_EMAIL:        ${{ secrets.TEST_USER_EMAIL }}
-      TEST_USER_PASSWORD:     ${{ secrets.TEST_USER_PASSWORD }}
-      # Force Playwright to use bundled Chromium (no Edge on GitHub runners)
-      BROWSER_CHANNEL:        ''
-      # Tell playwright.config.ts to use the preview server URL
-      BASE_URL:               'http://localhost:4173'
-      CI:                     'true'
+
+      TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
+      TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
+
+      BROWSER_CHANNEL: ''
+      BASE_URL: 'http://localhost:4173'
+      CI: 'true'
 
     steps:
-      - name: Checkout repository
+      - name: Checkout selected branch
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+
+      - name: Display selected branch
+        run: |
+          echo "Running Playwright tests on branch: ${{ inputs.branch }}"
+          git branch --show-current
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -50,37 +72,37 @@ jobs:
 
       - name: Verify built app contains Supabase config
         run: |
-          # Check the built JS contains a real Supabase URL (not empty/placeholder)
           if grep -r "supabase.co" dist/ --include="*.js" -l | head -1 > /dev/null 2>&1; then
-            echo "✅ Supabase URL found in build output"
+            echo "Supabase URL found in build output"
           else
-            echo "❌ WARNING: Supabase URL not found in build. Check VITE_SUPABASE_URL secret."
-            echo "Build env VITE_SUPABASE_URL is set: ${{ secrets.VITE_SUPABASE_URL != '' }}"
+            echo "WARNING: Supabase URL not found in build."
+            echo "Check VITE_SUPABASE_URL secret."
           fi
 
       - name: Install Playwright browsers
-        # Only installs Chromium — faster than installing all browsers
         run: npx playwright install chromium --with-deps
 
       - name: Run Playwright tests
+        env:
+          SPEC: ${{ inputs.spec }}
+          PROJECT: ${{ inputs.project }}
         run: |
-          if [ -n "${{ github.event.inputs.spec }}" ]; then
-            # Run a specific spec file
-            ARGS="${{ github.event.inputs.spec }}"
-          else
-            ARGS=""
+          ARGS=()
+
+          if [ -n "$SPEC" ]; then
+            ARGS+=("$SPEC")
           fi
 
-          if [ "${{ github.event.inputs.project }}" != "all" ] && [ -n "${{ github.event.inputs.project }}" ]; then
-            # Run a specific project
-            ARGS="$ARGS --project=${{ github.event.inputs.project }}"
+          if [ "$PROJECT" != "all" ]; then
+            ARGS+=("--project=$PROJECT")
           fi
 
-          npx playwright test $ARGS
+          npx playwright test "${ARGS[@]}"
+
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4
-        if: always()  # upload even on test failure so you can inspect results
+        if: always()
         with:
-          name: playwright-report
+          name: playwright-report-${{ inputs.branch }}
           path: playwright-report/
           retention-days: 14
