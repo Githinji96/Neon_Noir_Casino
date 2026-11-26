@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAdminStore, GameConfig } from '../../store/adminStore';
 import { useToast } from '../../components/admin/ToastProvider';
 import LoadingSkeleton from '../../components/admin/LoadingSkeleton';
+import MiniGameConfigPanel from '../../components/admin/MiniGameConfigPanel';
 import { GAME_LISTINGS } from '../../config/mockData';
 import { INITIAL_TABLES } from '../../config/liveTablesData';
 
@@ -38,6 +39,31 @@ interface TableForm {
 }
 
 
+// ── Mini Game RTP types ────────────────────────────────────────────────────
+
+interface MiniGameRtpRow {
+  game_id:                string;
+  theoretical_rtp_pct:    number;
+  theoretical_house_edge: number;
+  total_rounds:           number;
+  total_stakes:           number;
+  total_gross_payouts:    number;
+  observed_rtp_pct:       number | null;
+  net_gaming_revenue:     number;
+  winning_rounds:         number;
+  losing_rounds:          number;
+}
+
+const MINI_GAME_LABELS: Record<string, string> = {
+  'lucky-wheel':        'Neon Lucky Wheel',
+  'scratch-cards':      'Neon Scratch Cards',
+  'treasure-chest':     'Cyber Treasure Chest',
+  'mini-slot':          'Mini Slot Jackpot',
+  'mystery-multiplier': 'Mystery Multiplier',
+  'crystal-match':      'Crystal Match',
+};
+
+
 export default function GamesPage() {
   const { toast } = useToast();
   const { auditLog, adminProfile } = useAdminStore();
@@ -50,6 +76,43 @@ export default function GamesPage() {
   const [tableModalOpen, setTableModalOpen] = useState(false);
   const [editingTableId, setEditingTableId] = useState<string | null>(null);
   const [tableForm, setTableForm] = useState<TableForm>({ name: '', dealer_name: '', max_players: '9' });
+
+  // Mini game RTP stats
+  const [miniRtp, setMiniRtp]               = useState<MiniGameRtpRow[]>([]);
+  const [miniRtpLoading, setMiniRtpLoading] = useState(false);
+  const [miniRtpError, setMiniRtpError]     = useState<string | null>(null);
+
+  const fetchMiniRtp = useCallback(async () => {
+    setMiniRtpLoading(true);
+    setMiniRtpError(null);
+    const { data, error } = await supabase.rpc('get_mini_game_rtp_report', {
+      p_game_id:   '',
+      p_from_date: null,
+      p_to_date:   null,
+    });
+    if (error) {
+      setMiniRtpError(error.message);
+    } else {
+      setMiniRtp(
+        (data as MiniGameRtpRow[] ?? []).map((r) => ({
+          ...r,
+          theoretical_rtp_pct:    Number(r.theoretical_rtp_pct),
+          theoretical_house_edge: Number(r.theoretical_house_edge),
+          total_rounds:           Number(r.total_rounds),
+          total_stakes:           Number(r.total_stakes),
+          total_gross_payouts:    Number(r.total_gross_payouts),
+          observed_rtp_pct:       r.observed_rtp_pct != null ? Number(r.observed_rtp_pct) : null,
+          net_gaming_revenue:     Number(r.net_gaming_revenue),
+          winning_rounds:         Number(r.winning_rounds),
+          losing_rounds:          Number(r.losing_rounds),
+        }))
+      );
+    }
+    setMiniRtpLoading(false);
+  }, []);
+
+  useEffect(() => { void fetchMiniRtp(); }, [fetchMiniRtp]);
+  // trigger HMR
 
   async function fetchGames() {
     const { data: configs } = await supabase.from('admin_game_config').select('*');
@@ -239,6 +302,142 @@ export default function GamesPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      {/* Mini Jackpot Games — Config + Live Stats */}
+      <div className="flex flex-col gap-4">
+        <h3 className="text-white/60 text-xs uppercase tracking-widest px-1">Mini Jackpot Games</h3>
+
+        {/* Config Panel */}
+        <MiniGameConfigPanel />
+
+        {/* Live RTP & GGR Stats */}
+        <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
+          <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
+            <div>
+              <h4 className="text-white/60 text-xs uppercase tracking-widest">Mini Game Performance</h4>
+              <p className="text-white/30 text-[10px] mt-0.5">All-time settled rounds · Theoretical vs Observed RTP</p>
+            </div>
+            <button
+              onClick={() => { void fetchMiniRtp(); }}
+              className="text-[#FFD700] text-xs font-orbitron hover:text-yellow-300 transition-colors"
+            >
+              ↻ Refresh
+            </button>
+          </div>
+
+          {miniRtpLoading ? (
+            <div className="p-6"><LoadingSkeleton rows={4} /></div>
+          ) : miniRtpError ? (
+            <div className="p-6 text-center text-red-400 text-xs font-orbitron">{miniRtpError}</div>
+          ) : miniRtp.length === 0 ? (
+            <div className="p-8 text-center text-white/30 font-orbitron text-sm tracking-widest">No rounds recorded yet.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-white/10 bg-white/5">
+                    {['Game', 'Rounds', 'Total Wagered', 'Total Payout', 'NGR', 'Theoretical RTP', 'Observed RTP', 'Win Rate'].map((h) => (
+                      <th key={h} className="px-4 py-3 text-left text-xs uppercase tracking-widest text-white/50 whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {miniRtp.map((row) => {
+                    const winRate = row.total_rounds > 0
+                      ? ((row.winning_rounds / row.total_rounds) * 100).toFixed(1)
+                      : null;
+                    const rtpDiff = row.observed_rtp_pct != null
+                      ? row.observed_rtp_pct - row.theoretical_rtp_pct
+                      : null;
+                    return (
+                      <tr key={row.game_id} className="border-b border-white/5 hover:bg-white/[0.03] transition-colors">
+                        <td className="px-4 py-3 font-semibold text-white whitespace-nowrap">
+                          {MINI_GAME_LABELS[row.game_id] ?? row.game_id}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-white/70">{row.total_rounds.toLocaleString()}</td>
+                        <td className="px-4 py-3 font-mono text-white/80">
+                          KES {Number(row.total_stakes).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-green-400">
+                          KES {Number(row.total_gross_payouts).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`font-mono font-bold ${row.net_gaming_revenue >= 0 ? 'text-[#FFD700]' : 'text-red-400'}`}>
+                            KES {Number(row.net_gaming_revenue).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 font-mono text-white/60">
+                          {row.theoretical_rtp_pct.toFixed(1)}%
+                          <span className="text-white/30 text-[10px] ml-1">({row.theoretical_house_edge.toFixed(1)}% edge)</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          {row.total_rounds === 0 || row.observed_rtp_pct == null ? (
+                            <span className="text-white/25 font-mono text-xs">—</span>
+                          ) : (
+                            <span className={`font-mono font-bold ${
+                              rtpDiff !== null && Math.abs(rtpDiff) > 5
+                                ? rtpDiff > 0 ? 'text-red-400' : 'text-green-400'
+                                : 'text-white/80'
+                            }`}>
+                              {row.observed_rtp_pct.toFixed(1)}%
+                              {rtpDiff !== null && (
+                                <span className="text-[10px] ml-1 text-white/40">
+                                  ({rtpDiff >= 0 ? '+' : ''}{rtpDiff.toFixed(1)})
+                                </span>
+                              )}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-white/60">
+                          {winRate != null ? `${winRate}%` : '—'}
+                          {row.total_rounds > 0 && (
+                            <span className="text-white/30 text-[10px] ml-1">
+                              ({row.winning_rounds}W/{row.losing_rounds}L)
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                {/* Totals */}
+                {miniRtp.some((r) => r.total_rounds > 0) && (() => {
+                  const tot = miniRtp.reduce((a, r) => ({
+                    rounds:   a.rounds   + r.total_rounds,
+                    stakes:   a.stakes   + r.total_stakes,
+                    payouts:  a.payouts  + r.total_gross_payouts,
+                    ngr:      a.ngr      + r.net_gaming_revenue,
+                    wins:     a.wins     + r.winning_rounds,
+                  }), { rounds: 0, stakes: 0, payouts: 0, ngr: 0, wins: 0 });
+                  const obsRtp = tot.stakes > 0 ? (tot.payouts / tot.stakes * 100) : null;
+                  return (
+                    <tfoot>
+                      <tr className="border-t border-white/20 bg-white/[0.06]">
+                        <td className="px-4 py-3 text-white/50 text-xs font-orbitron uppercase tracking-wider">All Mini Games</td>
+                        <td className="px-4 py-3 font-mono font-bold text-white">{tot.rounds.toLocaleString()}</td>
+                        <td className="px-4 py-3 font-mono font-bold text-white">KES {tot.stakes.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                        <td className="px-4 py-3 font-mono font-bold text-green-400">KES {tot.payouts.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                        <td className="px-4 py-3 font-mono font-bold">
+                          <span className={tot.ngr >= 0 ? 'text-[#FFD700]' : 'text-red-400'}>
+                            KES {tot.ngr.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-white/30 text-xs">—</td>
+                        <td className="px-4 py-3 font-mono font-bold text-white/80">
+                          {obsRtp != null ? `${obsRtp.toFixed(1)}%` : '—'}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-white/60">
+                          {tot.rounds > 0 ? `${((tot.wins / tot.rounds) * 100).toFixed(1)}%` : '—'}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  );
+                })()}
+              </table>
+            </div>
+          )}
         </div>
       </div>
 

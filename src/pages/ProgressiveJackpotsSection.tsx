@@ -13,14 +13,13 @@ export default function ProgressiveJackpotsSection({ onSpinNow }: ProgressiveJac
   const startRealTimeGrowth = useJackpotStore((s) => s.startRealTimeGrowth);
 
   useEffect(() => {
-    // Growth ticker uses amounts already synced by jackpotStore module-level init
     const stopGrowth = startRealTimeGrowth();
     return stopGrowth;
   }, []);
 
   return (
-    <section className="py-8">
-      <div className="px-6 md:px-10 mb-6">
+    <section className="pt-6 pb-2">
+      <div className="px-3 sm:px-4 md:px-6 mb-4">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="font-orbitron font-bold text-xl tracking-widest text-white uppercase">
@@ -41,27 +40,31 @@ export default function ProgressiveJackpotsSection({ onSpinNow }: ProgressiveJac
                   color: '#FFD700',
                 }}
               >
-                🏆 Last win: KES {recentWinner.amount.toLocaleString('en-US', { maximumFractionDigits: 0 })} on {recentWinner.jackpotName}
+                🏆 {recentWinner.jackpotName}: KES {recentWinner.amount.toLocaleString('en-US', { maximumFractionDigits: 0 })}
               </motion.div>
             )}
           </AnimatePresence>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 px-6 md:px-10 pb-4">
-        {jackpots.map((jackpot) => (
-          <JackpotCard
-            key={jackpot.id}
-            name={jackpot.name}
-            gameTitle={jackpot.gameTitle}
-            amount={jackpot.currentAmount}
-            tags={jackpot.tags}
-            state={jackpot.state}
-            progressPct={jackpot.progressPct}
-            minimumThreshold={jackpot.minimumThreshold}
-            onSpinNow={() => onSpinNow(jackpot.gameId, jackpot.name)}
-          />
-        ))}
+      <div className="px-3 sm:px-4 md:px-6 pb-4">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5 sm:gap-3 w-full">
+          {jackpots.map((jackpot) => (
+            <JackpotCard
+              key={jackpot.id}
+              name={jackpot.name}
+              gameTitle={jackpot.gameTitle}
+              amount={jackpot.currentAmount}
+              type={jackpot.type}
+              tags={jackpot.tags}
+              state={jackpot.state}
+              progressPct={jackpot.progressPct}
+              minimumThreshold={jackpot.minimumThreshold}
+              contributionRate={jackpot.contributionRate}
+              onSpinNow={() => onSpinNow(jackpot.gameId, jackpot.name)}
+            />
+          ))}
+        </div>
       </div>
     </section>
   );

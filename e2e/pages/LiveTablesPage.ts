@@ -70,10 +70,21 @@ export class LiveTablesPage {
 
   /** Join by table ID — preferred and most reliable */
   async joinTableById(tableId: string): Promise<void> {
-    // Wait for Navbar balance to be non-zero before joining.
-    // handleJoin blocks with an alert when balance < minBet.
+    // Wait for the balance element to appear in the DOM (requires auth to be ready).
+    const balanceEl = this.page.getByTestId('navbar-balance');
+    const appeared = await balanceEl.waitFor({ state: 'attached', timeout: 15_000 })
+      .then(() => true)
+      .catch(() => false);
+
+    if (!appeared) {
+      // Auth session didn't load — throw a recognizable error so the calling
+      // beforeEach can catch it and call test.skip() in the correct context.
+      throw new Error('AUTH_SESSION_NOT_AVAILABLE: Navbar balance not found — auth session may have expired');
+    }
+
+    // Then wait for it to be non-zero (balance syncs asynchronously from Supabase)
     await expect(
-      this.page.getByTestId('navbar-balance'),
+      balanceEl,
       'Navbar balance must be visible and non-zero before joining a table'
     ).not.toHaveText('KES 0.00', { timeout: 15_000 });
 

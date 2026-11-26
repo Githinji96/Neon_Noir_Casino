@@ -26,10 +26,19 @@ const BROWSER_CHANNEL = process.env.BROWSER_CHANNEL ?? 'msedge';
 // When channel is empty string, pass undefined so Playwright uses bundled browser
 const resolvedChannel = BROWSER_CHANNEL || undefined;
 
-/** Specs that are ONLY run under chromium-auth (already have auth via storageState in
- *  all projects now, but these specs still match only chromium-auth for backward compat) */
+/** Specs that are ONLY run under their dedicated projects.
+ *  Excluding these from the viewport projects prevents them running 4× redundantly
+ *  and avoids skip-spam when auth-sensitive tests can't load on those viewports. */
 const AUTH_ONLY_SPECS = [
-  '**/liveTables.spec.ts',    // runs under its own live-tables project
+  '**/liveTables.spec.ts',      // runs under live-tables project
+  '**/slot-betting.spec.ts',    // runs under chromium-auth project
+  '**/slot.spec.ts',            // runs under chromium-auth project
+  '**/deposit-withdraw.spec.ts',// runs under chromium-auth project
+  '**/notifications.spec.ts',   // runs under chromium-auth project
+  '**/settings.spec.ts',        // runs under chromium-auth project
+  '**/auth.spec.ts',            // runs under chromium-auth project
+  '**/accessibility.spec.ts',   // runs under chromium-auth project (requires ⚙️ auth-gated UI)
+  '**/registration.spec.ts',    // runs under registration project (needs NO auth state)
 ];
 
 export default defineConfig({
@@ -58,6 +67,10 @@ export default defineConfig({
     // All projects share the same saved auth state so every test runs authenticated.
     // globalSetup saves this file before any tests run.
     storageState: AUTH_STATE,
+    // Disable GPU acceleration to prevent Edge GPU process crashes on Windows.
+    launchOptions: {
+      args: ['--disable-gpu', '--disable-gpu-compositing'],
+    },
   },
 
   projects: [
@@ -112,6 +125,7 @@ export default defineConfig({
         '**/notifications.spec.ts',
         '**/settings.spec.ts',
         '**/auth.spec.ts',
+        '**/accessibility.spec.ts',
       ],
     },
 
@@ -124,6 +138,22 @@ export default defineConfig({
         storageState: AUTH_STATE,
       },
       testMatch: ['**/liveTables.spec.ts'],
+      timeout: 60_000,
+    },
+
+    /* ── Registration — runs with NO auth state so signUp starts clean ── */
+    {
+      name: 'registration',
+      use: {
+        channel: resolvedChannel,
+        viewport: { width: 1440, height: 900 },
+        // Explicitly no storageState — a pre-existing Supabase session in
+        // localStorage causes supabase.auth.signUp() to throw instead of
+        // returning { error }, which the signUp() catch block converts to
+        // the generic "We could not create your account" fallback message.
+        storageState: { cookies: [], origins: [] },
+      },
+      testMatch: ['**/registration.spec.ts'],
       timeout: 60_000,
     },
   ],

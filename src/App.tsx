@@ -7,7 +7,6 @@ import AdminAuthGuard from './components/admin/AdminAuthGuard';
 import PlayerInactivityGuard from './components/PlayerInactivityGuard';
 import MusicManager from './components/MusicManager';
 import Footer from './components/Footer';
-import BottomNav from './components/BottomNav';
 import ScrollToTop from './components/ScrollToTop';
 
 // ── Lazy-load every page that isn't the landing (CasinoLobby) ────────────────
@@ -26,6 +25,7 @@ const AuthCallbackPage       = lazy(() => import('./pages/auth/AuthCallbackPage'
 const PrivacyPolicyPage      = lazy(() => import('./pages/PrivacyPolicyPage'));
 const TermsAndConditionsPage = lazy(() => import('./pages/TermsAndConditionsPage'));
 const ContactPage            = lazy(() => import('./pages/ContactPage'));
+const FAQPage                = lazy(() => import('./pages/FAQPage'));
 
 // ── Admin pages (already lazy) ────────────────────────────────────────────────
 const AdminLoginPage      = lazy(() => import('./pages/admin/AdminLoginPage'));
@@ -108,7 +108,7 @@ function ProtectedRoute() {
   return user ? <Outlet /> : <Navigate to="/auth/login" state={{ from: location }} replace />;
 }
 
-/** Layout wrapper that adds the Footer and mobile BottomNav to all public pages */
+/** Layout wrapper that adds the Footer to all public pages */
 function PublicLayout() {
   const location = useLocation();
   // Don't show footer inside the slot machine or live table room (immersive pages)
@@ -117,8 +117,6 @@ function PublicLayout() {
     <>
       <Outlet />
       {!noFooter && <Footer />}
-      {/* Mobile bottom navigation — renders on all public pages, hides itself on /slot */}
-      <BottomNav />
     </>
   );
 }
@@ -169,6 +167,7 @@ function AppRoutes() {
           <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
           <Route path="/terms" element={<TermsAndConditionsPage />} />
           <Route path="/contact" element={<ContactPage />} />
+          <Route path="/faq" element={<FAQPage />} />
 
           {/* Protected routes — require active session */}
           <Route element={<ProtectedRoute />}>

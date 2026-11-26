@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head><title>Overflow Finder</title></head>
+<body>
+<h2>Open localhost:5173/jackpots, then open DevTools Console and paste:</h2>
+<pre>
+(function(){
+  var vw = document.documentElement.clientWidth;
+  var sw = document.documentElement.scrollWidth;
+  console.log('viewport:', vw, 'scrollWidth:', sw, 'overflow:', sw - vw);
+  var all = document.querySelectorAll('*');
+  var bad = [];
+  for (var i = 0; i < all.length; i++) {
+    var el = all[i];
+    var r = el.getBoundingClientRect();
+    if (r.right > vw + 1) {
+      bad.push({
+        tag: el.tagName,
+        id: el.id,
+        cls: (el.className || '').toString().slice(0,80),
+        right: Math.round(r.right),
+        overflow: Math.round(r.right - vw)
+      });
+    }
+  }
+  console.table(bad.slice(0, 20));
+})();
+</pre>
+</body>
+</html>

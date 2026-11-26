@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { waitForPageReady } from './helpers/waitHelpers';
+import { waitForPageReady, waitForAuthUI } from './helpers/waitHelpers';
 
 /**
  * Accessibility / UX tests.
@@ -60,22 +60,24 @@ test.describe('Accessibility — Notification Bell', () => {
 
   test.use({ viewport: { width: 1440, height: 900 } });
 
-  test('bell button has an aria-label containing "Notifications"', async ({ page }) => {
+  test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await waitForPageReady(page);
+    // Bell only renders when authenticated — wait for authStore to hydrate.
+    const authed = await waitForAuthUI(page);
+    if (!authed) test.skip();
+  });
+
+  test('bell button has an aria-label containing "Notifications"', async ({ page }) => {
     const bell = page.getByRole('button', { name: /notifications/i });
-    const visible = await bell.isVisible().catch(() => false);
-    if (!visible) test.skip();
+    await expect(bell).toBeVisible({ timeout: 5_000 });
     const label = await bell.getAttribute('aria-label');
     expect(label).toMatch(/notifications/i);
   });
 
   test('bell button has aria-expanded attribute', async ({ page }) => {
-    await page.goto('/');
-    await waitForPageReady(page);
     const bell = page.getByRole('button', { name: /notifications/i });
-    const visible = await bell.isVisible().catch(() => false);
-    if (!visible) test.skip();
+    await expect(bell).toBeVisible({ timeout: 5_000 });
     const expanded = await bell.getAttribute('aria-expanded');
     expect(['true', 'false']).toContain(expanded);
   });
@@ -88,14 +90,20 @@ test.describe('Accessibility — Settings Panel', () => {
 
   test.use({ viewport: { width: 1440, height: 900 } });
 
-  test('settings button is keyboard-focusable and activatable', async ({ page }) => {
+  test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await waitForPageReady(page);
-    const settingsBtn = page.locator('nav button').filter({ hasText: '⚙️' });
-    const visible = await settingsBtn.isVisible().catch(() => false);
-    if (!visible) test.skip();
+    // ⚙️ button only renders when authenticated — wait for authStore to hydrate.
+    const authed = await waitForAuthUI(page);
+    if (!authed) test.skip();
+  });
 
-    // Tab to the settings button and press Enter
+  test('settings button is keyboard-focusable and activatable', async ({ page }) => {
+    // Two ⚙️ buttons exist in the DOM (desktop + lg:hidden mobile clone).
+    // .first() reliably targets the desktop one which is always rendered first.
+    const settingsBtn = page.locator('nav button').filter({ hasText: '⚙️' }).first();
+    await expect(settingsBtn).toBeVisible({ timeout: 5_000 });
+
     await settingsBtn.focus();
     await page.keyboard.press('Enter');
     await page.waitForTimeout(400);
@@ -116,7 +124,6 @@ test.describe('Accessibility — Login Page', () => {
   });
 
   test('email input has an associated label', async ({ page }) => {
-    // InputField renders a <label> — verify it exists
     const label = page.locator('label').filter({ hasText: /email/i }).first();
     await expect(label).toBeVisible();
   });
@@ -132,8 +139,6 @@ test.describe('Accessibility — Login Page', () => {
 
     await emailInput.focus();
     await page.keyboard.press('Tab');
-    // After one Tab, either the password field or an intermediate element gets focus
-    // We just confirm the password field is reachable by keyboard
     await passwordInput.focus();
     await expect(passwordInput).toBeFocused();
   });
@@ -145,10 +150,8 @@ test.describe('Accessibility — Login Page', () => {
   });
 
   test('password show/hide toggle has a visible button with emoji icon', async ({ page }) => {
-    // The toggle is a plain button containing 👁️ (show) or 🙈 (hide)
     const toggle = page.locator('button[type="button"]').filter({ hasText: /👁️|🙈/ }).first();
     await expect(toggle).toBeVisible();
-    // It has tabIndex=-1 but is still clickable
     await toggle.click();
     const input = page.getByPlaceholder('Enter your password');
     await expect(input).toHaveAttribute('type', 'text');
@@ -174,7 +177,6 @@ test.describe('Accessibility — Contact Page', () => {
 
   test('invalid fields have aria-invalid="true" after submit attempt', async ({ page }) => {
     await page.getByRole('button', { name: /send message/i }).click();
-    // The name field should be marked as invalid
     await expect(page.locator('#name')).toHaveAttribute('aria-invalid', 'true', { timeout: 3_000 });
   });
 
@@ -199,15 +201,17 @@ test.describe('Accessibility — Change M-Pesa Modal', () => {
 
   test.use({ viewport: { width: 1440, height: 900 } });
 
-  test('modal has role="dialog" and aria-modal="true"', async ({ page }) => {
+  test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await waitForPageReady(page);
+    // ⚙️ button only renders when authenticated — wait for authStore to hydrate.
+    const authed = await waitForAuthUI(page);
+    if (!authed) test.skip();
+  });
 
-    // Open settings → account tab → Change/Add M-Pesa
-    const settingsBtn = page.locator('nav button').filter({ hasText: '⚙️' });
-    const settingsVisible = await settingsBtn.isVisible().catch(() => false);
-    if (!settingsVisible) test.skip();
-
+  test('modal has role="dialog" and aria-modal="true"', async ({ page }) => {
+    const settingsBtn = page.locator('nav button').filter({ hasText: '⚙️' }).first();
+    await expect(settingsBtn).toBeVisible({ timeout: 5_000 });
     await settingsBtn.click();
     await page.waitForTimeout(400);
 
@@ -221,13 +225,8 @@ test.describe('Accessibility — Change M-Pesa Modal', () => {
   });
 
   test('password show/hide toggle in Change M-Pesa has aria-label and aria-pressed', async ({ page }) => {
-    await page.goto('/');
-    await waitForPageReady(page);
-
-    const settingsBtn = page.locator('nav button').filter({ hasText: '⚙️' });
-    const settingsVisible = await settingsBtn.isVisible().catch(() => false);
-    if (!settingsVisible) test.skip();
-
+    const settingsBtn = page.locator('nav button').filter({ hasText: '⚙️' }).first();
+    await expect(settingsBtn).toBeVisible({ timeout: 5_000 });
     await settingsBtn.click();
     await page.waitForTimeout(400);
 

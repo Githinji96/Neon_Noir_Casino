@@ -55,7 +55,9 @@ export class SettingsModalPage {
 
   async open(via: 'desktop' | 'mobile' = 'desktop'): Promise<void> {
     if (via === 'desktop') {
-      await this.page.locator('nav button').filter({ hasText: '⚙️' }).click();
+      // Two ⚙️ buttons exist in the DOM (desktop + lg:hidden mobile clone).
+      // .first() reliably targets the desktop one which is always rendered first.
+      await this.page.locator('nav button').filter({ hasText: '⚙️' }).first().click();
     } else {
       // In mobile menu, the Settings row
       await this.page.getByRole('button', { name: /settings/i }).click();

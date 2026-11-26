@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, fireEvent, cleanup, within } from '@testing-library/react';
+import { render, fireEvent, cleanup, within, act, waitFor } from '@testing-library/react';
 import * as fc from 'fast-check';
 import React from 'react';
 
@@ -25,12 +25,10 @@ const { mockSignIn, mockSignUp, mockNavigate } = vi.hoisted(() => {
   return { mockSignIn, mockSignUp, mockNavigate };
 });
 
-// Mock react-router-dom so navigate is interceptable
 vi.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
 }));
 
-// Mock authStore so signIn/signUp are interceptable
 vi.mock('../../store/authStore', () => ({
   useAuthStore: (selector?: (s: unknown) => unknown) => {
     const state = { signIn: mockSignIn, signUp: mockSignUp };
@@ -38,7 +36,6 @@ vi.mock('../../store/authStore', () => ({
   },
 }));
 
-// Mock framer-motion to avoid animation complexity in tests
 vi.mock('framer-motion', () => ({
   motion: {
     div: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) =>
@@ -48,7 +45,6 @@ vi.mock('framer-motion', () => ({
     React.createElement(React.Fragment, null, children),
 }));
 
-// Import component after mocks
 import AuthModal from '../AuthModal';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -57,18 +53,8 @@ function renderModal(onClose = vi.fn()) {
   return render(<AuthModal isOpen={true} onClose={onClose} />);
 }
 
-// ─── Bug Condition Exploration Property ──────────────────────────────────────
+// ─── Tests ───────────────────────────────────────────────────────────────────
 
-/**
- * Validates: Requirements 2.1, 2.3
- *
- * Property 1: For any interaction with AuthModal where the user initiates
- * signup (clicks the "Sign up" link/button), the fixed AuthModal SHALL call
- * navigate('/auth/signup') and SHALL NOT call signUp() inline.
- *
- * This is the bug condition exploration test. On unfixed code it FAILS because
- * signUp() is called. On fixed code it PASSES because the redirect happens.
- */
 describe('Property 1 – Bug Condition Exploration: AuthModal Signup Redirects to SignUpPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -89,20 +75,15 @@ describe('Property 1 – Bug Condition Exploration: AuthModal Signup Redirects t
 
           const { container } = renderModal(onClose);
 
-          // Find the "Sign up" link/button scoped to this container
           const signUpButton = within(container).getByRole('button', { name: /sign up/i });
           expect(signUpButton).toBeTruthy();
 
-          // Click it — on fixed code this triggers navigate('/auth/signup') + onClose()
-          fireEvent.click(signUpButton);
+          await act(async () => {
+            fireEvent.click(signUpButton);
+          });
 
-          // Property: navigate('/auth/signup') MUST have been called
           expect(mockNavigate).toHaveBeenCalledWith('/auth/signup');
-
-          // Property: signUp() MUST NOT have been called (no inline registration)
           expect(mockSignUp).not.toHaveBeenCalled();
-
-          // Property: onClose() MUST have been called (modal closes on redirect)
           expect(onClose).toHaveBeenCalled();
 
           cleanup();
@@ -113,22 +94,27 @@ describe('Property 1 – Bug Condition Exploration: AuthModal Signup Redirects t
   });
 
   it('submitting the signin form does NOT call navigate("/auth/signup")', async () => {
-    // Preservation: signin via AuthModal should still call signIn, not navigate
     vi.clearAllMocks();
     const onClose = vi.fn();
     const { container } = renderModal(onClose);
 
-    const emailInput = within(container).getByPlaceholderText(/email/i);
+    const emailInput    = within(container).getByPlaceholderText(/email/i);
     const passwordInput = within(container).getByPlaceholderText(/password/i);
-    const submitButton = within(container).getByRole('button', { name: /sign in/i });
+    const submitButton  = within(container).getByRole('button', { name: /sign in/i });
 
-    fireEvent.change(emailInput, { target: { value: 'test@example.com' } });
-    fireEvent.change(passwordInput, { target: { value: 'password123' } });
-    fireEvent.click(submitButton);
+    await act(async () => {
+      fireEvent.change(emailInput,    { target: { value: 'test@example.com' } });
+      fireEvent.change(passwordInput, { target: { value: 'password123' } });
+    });
 
-    // signUp() was never called during signin
+    await act(async () => {
+      fireEvent.click(submitButton);
+    });
+
+    // Wait for signIn promise to settle
+    await waitFor(() => expect(mockSignIn).toHaveBeenCalledTimes(1));
+
     expect(mockSignUp).not.toHaveBeenCalled();
-    // navigate('/auth/signup') was NOT triggered by signin
     expect(mockNavigate).not.toHaveBeenCalledWith('/auth/signup');
   });
 
@@ -144,17 +130,24 @@ describe('Property 1 – Bug Condition Exploration: AuthModal Signup Redirects t
 
           const { container } = renderModal(onClose);
 
-          const emailInput = within(container).getByPlaceholderText(/email/i);
-          const passwordInput = within(container).getByPlaceholderText(/password/i);
-          const submitButton = within(container).getByRole('button', { name: /sign in/i });
+          await act(async () => {
+            fireEvent.change(
+              within(container).getByPlaceholderText(/email/i),
+              { target: { value: email } }
+            );
+            fireEvent.change(
+              within(container).getByPlaceholderText(/password/i),
+              { target: { value: password } }
+            );
+          });
 
-          fireEvent.change(emailInput, { target: { value: email } });
-          fireEvent.change(passwordInput, { target: { value: password } });
-          fireEvent.click(submitButton);
+          await act(async () => {
+            fireEvent.click(within(container).getByRole('button', { name: /sign in/i }));
+          });
 
-          // signUp() is never called in signin path
+          await waitFor(() => expect(mockSignIn).toHaveBeenCalledTimes(1));
+
           expect(mockSignUp).not.toHaveBeenCalled();
-          // navigate('/auth/signup') is never called in signin path
           expect(mockNavigate).not.toHaveBeenCalledWith('/auth/signup');
 
           cleanup();

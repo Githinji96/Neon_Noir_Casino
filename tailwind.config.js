@@ -1,6 +1,12 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
+  safelist: [
+    'grid-cols-5', 'grid-cols-6',
+    'sm:grid-cols-3', 'sm:grid-cols-5', 'sm:grid-cols-6',
+    'md:grid-cols-5', 'md:grid-cols-6',
+    'lg:grid-cols-5', 'lg:grid-cols-6',
+  ],
   theme: {
     screens: {
       'xs': '375px',

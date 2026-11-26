@@ -59,16 +59,64 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
   }
 
   const supabase = createClient(supabaseUrl, supabaseKey);
-  const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-    email:    testEmail,
-    password: testPassword,
-  });
 
-  if (authError || !authData.session) {
-    console.warn(`[globalSetup] Could not log in via API: ${authError?.message ?? 'no session'}`);
-    console.warn('[globalSetup] Tests requiring auth will fall back to anonymous mode.');
-    return;
+  // ── Strategy 1: Refresh existing session if auth-state.json has a valid refresh token ──
+  // This avoids Supabase sign-in rate limits on repeated test runs.
+  const authStatePath = resolve(process.cwd(), 'e2e/.auth/auth-state.json');
+  // Use Session directly — refreshSession and signInWithPassword return different
+  // data shapes (Session | null vs Session non-null), so we only carry the Session.
+  let sessionData: import('@supabase/supabase-js').Session | null = null;
+
+  // Computed once, reused in both the Strategy 1 token lookup and the final injection.
+  const projectRef = supabaseUrl.replace('https://', '').split('.')[0];
+  const storageKey = `sb-${projectRef}-auth-token`;
+
+  try {
+    const existing = JSON.parse(readFileSync(authStatePath, 'utf8'));
+    const localStorage = existing?.origins?.[0]?.localStorage ?? [];
+    const tokenEntry = localStorage.find((e: { name: string }) => e.name === storageKey);
+    if (tokenEntry) {
+      const stored = JSON.parse(tokenEntry.value);
+      const refreshToken = stored?.refresh_token;
+      if (refreshToken) {
+        const { data, error } = await supabase.auth.refreshSession({ refresh_token: refreshToken });
+        if (!error && data.session) {
+          sessionData = data.session;
+          console.log('[globalSetup] Session refreshed from existing auth-state.json');
+        } else {
+          console.log('[globalSetup] Refresh failed, will sign in:', error?.message);
+        }
+      }
+    }
+  } catch {
+    // auth-state.json doesn't exist or is malformed — proceed to sign in
   }
+
+  // ── Strategy 2: Sign in with password if refresh didn't work ──
+  if (!sessionData) {
+    let lastError = '';
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email:    testEmail,
+        password: testPassword,
+      });
+      if (!authError && data.session) {
+        sessionData = data.session;
+        break;
+      }
+      lastError = authError?.message ?? 'no session';
+      console.warn(`[globalSetup] Login attempt ${attempt}/3 failed: ${lastError}`);
+      if (attempt < 3) await new Promise((r) => setTimeout(r, 2000 * attempt));
+    }
+
+    if (!sessionData) {
+      console.warn(`[globalSetup] Could not log in after 3 attempts: ${lastError}`);
+      console.warn('[globalSetup] Tests requiring auth will fall back to anonymous mode.');
+      return;
+    }
+  }
+
+  const session = sessionData;
 
   // Inject session into a real browser context so storageState captures it correctly
   const browser = await chromium.launch({ channel });
@@ -77,11 +125,9 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
   await page.goto('/');
   await page.waitForLoadState('domcontentloaded');
 
-  const projectRef = supabaseUrl.replace('https://', '').split('.')[0];
-  const storageKey = `sb-${projectRef}-auth-token`;
   await page.evaluate(({ key, session }) => {
     localStorage.setItem(key, JSON.stringify(session));
-  }, { key: storageKey, session: authData.session });
+  }, { key: storageKey, session });
 
   await saveAuthState(context, 'e2e/.auth/auth-state.json');
   console.log(`[globalSetup] Auth state saved for ${testEmail}`);

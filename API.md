@@ -129,11 +129,13 @@ GET /rest/v1/transactions?checkout_request_id=eq.{checkoutRequestId}&select=stat
 ### GET /jackpots — Live Jackpot Pools
 
 ```http
-GET /rest/v1/jackpots?select=id,name,type,current_amount,trigger_probability
+GET /rest/v1/jackpots?select=id,name,type,current_amount,locked,base_amount,contribution_rate
 ```
 ```json
 [{ "id": "mega-moolah-noir", "name": "Mega Moolah Noir", "type": "mega", "current_amount": 3429102.55 }]
 ```
+
+> **Note:** `trigger_probability` is excluded from all client-facing queries. It is sensitive RNG configuration managed server-side only.
 
 ### GET /jackpot_wins — Winner History
 
@@ -266,7 +268,7 @@ GET /rest/v1/vip_users?user_id=eq.{userId}&select=level,total_points
 profiles          (id, username, balance, phone, updated_at)
 transactions      (id, user_id, phone, amount, status, checkout_request_id, mpesa_receipt)
 spins             (id, user_id, game_id, bet, payout, is_free_spin, created_at)
-jackpots          (id, name, type, current_amount, base_amount, contribution_rate, trigger_probability)
+jackpots          (id, name, type, current_amount, base_amount, contribution_rate) -- trigger_probability excluded from client queries
 jackpot_wins      (id, user_id, jackpot_id, amount, created_at)
 vip_users         (user_id, level, total_points, monthly_points, cashback_available, last_updated)
 vip_transactions  (id, user_id, points_earned, source, created_at)

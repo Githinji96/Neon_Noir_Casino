@@ -15,8 +15,9 @@ export interface JackpotDisplay {
   gameId: string;
   gameTitle: string;
   state: 'BUILDING' | 'ACTIVE' | 'WON';
-  progressPct: number;  // 0-100 toward minimumThreshold
+  progressPct: number;      // 0-100 toward minimumThreshold
   minimumThreshold: number;
+  contributionRate: number; // fraction e.g. 0.05 = 5% of each bet
 }
 
 export interface JackpotWin {
@@ -68,6 +69,7 @@ function buildDisplayList(): JackpotDisplay[] {
       state: getJackpotState(cfg, amount, rs?.lastWinTimestamp ?? 0),
       progressPct: getProgressToThreshold(cfg, amount),
       minimumThreshold: cfg.minimumThreshold,
+      contributionRate: cfg.contributionRate,
     };
   });
 }
@@ -158,19 +160,19 @@ export const useJackpotStore = create<JackpotState>((set) => ({
     try {
       const { data } = await supabase
         .from('jackpots')
-        .select('id, name, type, current_amount, locked, base_amount, contribution_rate, trigger_probability');
+        .select('id, name, type, current_amount, locked, base_amount, contribution_rate');
       if (!data?.length) return;
 
       // Single source of truth: DB rows drive the engine config.
-      // seedConfigs updates existing jackpots AND registers new DB rows
-      // that aren't in the hardcoded fallback list — fully dynamic.
+      // trigger_probability is intentionally excluded from the client query —
+      // it is sensitive RNG configuration that must not be visible in browser devtools.
+      // The hardcoded baseProbability in JACKPOT_CONFIGS is used instead.
       jackpotEngine.seedConfigs(data.map((row) => ({
         id:                  row.id,
         name:                row.name,
         type:                row.type,
         base_amount:         row.base_amount,
         contribution_rate:   row.contribution_rate,
-        trigger_probability: row.trigger_probability,
       })));
 
       const amounts: Record<string, number> = {};

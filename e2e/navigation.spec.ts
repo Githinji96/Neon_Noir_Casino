@@ -85,17 +85,19 @@ test.describe('Navigation — public routes', () => {
     await expect(navbar.mobileDrawer).toBeVisible();
   });
 
-  test('mobile menu shows Login when logged out', async ({ page, viewport }) => {
+  test('mobile menu shows Login when logged out', async ({ browser, viewport }) => {
     if ((viewport?.width ?? 1440) >= 1024) test.skip();
-    // Clear session to test logged-out state
-    await page.context().clearCookies();
-    await page.evaluate(() => { try { localStorage.clear(); } catch { /* ignore */ } });
+    // Create a fresh context with NO storageState so there is no auth session
+    const context = await browser.newContext({ storageState: undefined, viewport: viewport ?? { width: 390, height: 844 } });
+    const page = await context.newPage();
+
     await page.goto('/');
     await waitForPageReady(page);
     const navbar = new NavbarPage(page);
     await navbar.openMobileMenu();
-    await waitForAnimation(page, 400);
-    await expect(navbar.mobileDrawer.getByRole('button', { name: /login/i })).toBeVisible();
+    await waitForAnimation(page, 600);
+    await expect(navbar.mobileDrawer.getByRole('button', { name: /login/i })).toBeVisible({ timeout: 5_000 });
+    await context.close();
   });
 
   test('mobile menu closes when backdrop is clicked', async ({ page, viewport }) => {

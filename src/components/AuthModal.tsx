@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../store/authStore';
@@ -11,13 +11,23 @@ interface AuthModalProps {
 }
 
 export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
-  const [email, setEmail] = useState('');
+  const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [error, setError]       = useState('');
+  const [loading, setLoading]   = useState(false);
 
   const { signIn } = useAuthStore();
-  const navigate = useNavigate();
+  const navigate   = useNavigate();
+
+  // Clear credentials and errors every time the modal opens or closes
+  useEffect(() => {
+    if (!isOpen) {
+      setEmail('');
+      setPassword('');
+      setError('');
+      setLoading(false);
+    }
+  }, [isOpen]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,8 +38,11 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
 
     setLoading(false);
     if (err) { setError(err); return; }
-    // If caller provided a success handler (e.g. to navigate after login), use it.
-    // Otherwise just close the modal.
+
+    // Clear fields before success callback / close so they aren't visible
+    setEmail('');
+    setPassword('');
+
     if (onSuccess) {
       onSuccess();
     } else {
@@ -38,7 +51,8 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
   };
 
   const inputClass =
-    'w-full bg-black/40 border border-white/10 rounded-lg px-4 py-2.5 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-yellow-400/60 transition-colors';
+    'w-full bg-black/40 border border-white/10 rounded-lg px-4 py-2.5 text-white text-sm ' +
+    'placeholder-gray-500 focus:outline-none focus:border-yellow-400/60 transition-colors';
 
   return (
     <AnimatePresence>
@@ -49,10 +63,35 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
           onClick={onClose}
         >
           <motion.div
-            className="w-full max-w-sm bg-gray-900 border border-white/10 rounded-2xl p-6 shadow-2xl"
-            initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+            className="relative w-full max-w-sm bg-gray-900 border border-white/10 rounded-2xl p-6 shadow-2xl"
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
             onClick={(e) => e.stopPropagation()}
           >
+            {/* ── Close (✕) button ─────────────────────────────────────── */}
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close sign-in modal"
+              className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:text-white hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2.5}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                width={16}
+                height={16}
+                aria-hidden="true"
+              >
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+
             <h2 className="font-orbitron text-xl font-bold text-yellow-300 tracking-widest text-center mb-6">
               SIGN IN
             </h2>
@@ -84,7 +123,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
                 disabled={loading}
                 className="mt-2 w-full py-2.5 rounded-lg font-orbitron text-sm font-bold tracking-widest bg-yellow-400 text-black hover:bg-yellow-300 disabled:opacity-50 transition-colors"
               >
-                {loading ? '...' : 'SIGN IN'}
+                {loading ? 'SIGNING IN…' : 'SIGN IN'}
               </button>
             </form>
 

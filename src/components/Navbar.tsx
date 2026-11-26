@@ -184,7 +184,7 @@ export default function Navbar({ activeTab, compact }: NavbarProps) {
     <nav className="sticky top-0 z-50 bg-black border-b border-yellow-400/20" ref={menuRef}>
 
       {/* ── TOP BAR ── */}
-      <div className="px-3 sm:px-4 h-12 flex items-center justify-between gap-2 min-w-0">
+      <div className="px-4 sm:px-6 h-12 flex items-center justify-between gap-2 min-w-0">
 
         {/* Logo */}
         <Link
@@ -270,6 +270,13 @@ export default function Navbar({ activeTab, compact }: NavbarProps) {
               ⚙️
             </button>
           </div>
+
+          {/* Mobile/tablet: Settings icon always visible */}
+          <button onClick={openSettings}
+            className="lg:hidden text-gray-400 hover:text-neon-yellow text-lg w-8 h-8 flex items-center justify-center shrink-0"
+            aria-label="Settings">
+            ⚙️
+          </button>
 
           {/* Mobile: quick login when logged out */}
           {!user && (

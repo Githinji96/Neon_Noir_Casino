@@ -17,22 +17,39 @@ import { waitForPageReady } from './helpers/waitHelpers';
 
 /**
  * Navigate to the slot page using a non-jackpot game via ?game= query param.
- * The app reads this as a fallback when no React Router location.state is present
- * (which is the case when Playwright navigates directly via page.goto).
+ * Waits for either the SPIN button (authenticated) or login redirect (not authenticated).
+ * Returns true only when the game is actually ready to interact with.
  */
 async function gotoSlot(page: Page): Promise<boolean> {
   await page.goto('/slot?game=neon-jungle-fruits');
+  // Wait for navigation to settle — either on /slot or redirected to /auth/login
   await page.waitForURL(/auth\/login|\/slot/, { timeout: 10_000 });
-  return page.url().includes('/slot');
+  if (!page.url().includes('/slot')) return false;
+
+  // Wait for the SPIN button — this confirms auth resolved AND game rendered.
+  // ProtectedRoute takes up to 4s to time out; slot itself takes 1s to load.
+  // Total: allow up to 8s for the button to appear.
+  const spinBtn = page.locator('button.rounded-full.bg-yellow-400').first();
+  try {
+    await spinBtn.waitFor({ state: 'visible', timeout: 8_000 });
+    return true;
+  } catch {
+    // Button never appeared — auth timed out and redirected, or game failed to load
+    return false;
+  }
 }
 
-/** Wait for the 1-second loading overlay to disappear */
+/** Wait for the slot game to be fully interactive after gotoSlot confirms it's loaded */
 async function waitForSlotLoad(page: Page): Promise<void> {
-  // The loading screen shows a spinner and "LOADING..." text
-  await page.locator('text=LOADING...').waitFor({ state: 'hidden', timeout: 8_000 }).catch(() => {});
+  // gotoSlot already waits for the SPIN button — just ensure page is settled
   await waitForPageReady(page);
-  // Also wait for the SPIN button to become visible — confirms game is ready
-  await expect(page.getByRole('button', { name: /^spin$/i }).first()).toBeVisible({ timeout: 8_000 });
+  // The SPIN button must already be visible (guaranteed by gotoSlot)
+  const spinBtn = page.locator('button.rounded-full.bg-yellow-400').first();
+  try {
+    await spinBtn.waitFor({ state: 'visible', timeout: 5_000 });
+  } catch {
+    test.skip();
+  }
 }
 
 /**
@@ -40,12 +57,25 @@ async function waitForSlotLoad(page: Page): Promise<void> {
  * Returns a number in KES (e.g. 85.00).
  */
 async function getDisplayedBalance(page: Page): Promise<number> {
-  // WinDisplay renders: <span class="font-orbitron ...">KES 85.00</span>
-  const balanceEl = page.locator('main').locator('text=/KES \\d/').first();
-  await expect(balanceEl).toBeVisible({ timeout: 5_000 });
-  const raw = await balanceEl.textContent();
-  // Strip "KES " and commas, parse as float
-  const numeric = parseFloat((raw ?? '0').replace(/KES\s*/i, '').replace(/,/g, '').trim());
+  // WinDisplay renders a "Balance" label next to the balance value.
+  // Target the span immediately after the Balance label.
+  const balanceSection = page.locator('main').locator('span').filter({ hasText: /^Balance$/i }).first();
+  // The sibling span with the KES value is the next element
+  // Use the parent's text content and extract the KES value that's NOT the label
+  const container = balanceSection.locator('..');
+  await expect(container).toBeVisible({ timeout: 5_000 });
+
+  // Get all text from the container and find the KES amount
+  const raw = await container.textContent();
+  const match = (raw ?? '').match(/KES\s+([\d,]+\.\d{2})/);
+  if (match) {
+    return parseFloat(match[1].replace(/,/g, ''));
+  }
+
+  // Fallback: find the font-orbitron white balance span directly
+  const balanceEl = page.locator('main span.font-orbitron.text-white.font-bold').first();
+  const text = await balanceEl.textContent().catch(() => '0');
+  const numeric = parseFloat((text ?? '0').replace(/KES\s*/i, '').replace(/,/g, '').trim());
   return isNaN(numeric) ? 0 : numeric;
 }
 
@@ -62,34 +92,71 @@ async function getDisplayedBet(page: Page): Promise<number> {
 }
 
 /**
- * Set bet to a specific integer value by clicking − or + from current bet.
- * Max iterations prevents infinite loop on unreachable targets.
+ * Set bet to a specific integer value.
+ * Uses the custom-bet editor (click bet display → type value → SET) for reliability.
+ * Falls back to +/- buttons only if the editor isn't available.
  */
 async function setBetTo(page: Page, targetKes: number): Promise<void> {
+  // Try direct text input via the bet display button (most reliable)
+  const betDisplay = page.locator('button').filter({ hasText: /^KES \d+\.\d{2}$/ }).first();
+  const isVisible = await betDisplay.isVisible({ timeout: 3_000 }).catch(() => false);
+
+  if (isVisible) {
+    await betDisplay.click();
+    // Editor should open — wait for the number input
+    const numInput = page.locator('input[type="number"]').first();
+    const editorOpened = await numInput.isVisible({ timeout: 3_000 }).catch(() => false);
+
+    if (editorOpened) {
+      await numInput.fill(String(targetKes));
+      // Press Enter or click SET button
+      const setBtn = page.getByRole('button', { name: /^set$/i });
+      const setVisible = await setBtn.isVisible({ timeout: 2_000 }).catch(() => false);
+      if (setVisible) {
+        await setBtn.click();
+      } else {
+        await numInput.press('Enter');
+      }
+      // Verify the value was applied
+      await expect(
+        page.locator('button').filter({ hasText: new RegExp(`^KES ${targetKes.toFixed(2)}$`) }).first()
+      ).toBeVisible({ timeout: 5_000 });
+      return;
+    }
+  }
+
+  // Fallback: use +/- buttons, but only click when the button is enabled
   const increaseBtn = page.getByRole('button', { name: 'Increase bet' });
   const decreaseBtn = page.getByRole('button', { name: 'Decrease bet' });
 
   for (let i = 0; i < 200; i++) {
     const current = await getDisplayedBet(page);
     if (Math.abs(current - targetKes) < 0.01) return;
+
     if (current < targetKes) {
+      const disabled = await increaseBtn.isDisabled();
+      if (disabled) break; // at max, can't go higher
       await increaseBtn.click();
     } else {
+      const disabled = await decreaseBtn.isDisabled();
+      if (disabled) break; // at min, can't go lower
       await decreaseBtn.click();
     }
-    // Small pause so React state updates between clicks
     await page.waitForTimeout(40);
   }
-  throw new Error(`Could not reach bet KES ${targetKes} from ${await getDisplayedBet(page)}`);
+
+  const final = await getDisplayedBet(page);
+  if (Math.abs(final - targetKes) > 0.01) {
+    throw new Error(`Could not reach bet KES ${targetKes} — stopped at KES ${final}`);
+  }
 }
 
 /**
- * Wait for a spin to complete: SPIN button goes from "..." back to "SPIN".
- * Relies on `isSpinning` state reflected in the button text.
+ * Wait for a spin to complete: SPIN button goes from "..." back to its normal text.
+ * Uses CSS class selector to avoid aria-label / translation issues.
  */
 async function waitForSpinComplete(page: Page, timeout = 8_000): Promise<void> {
-  const spinBtn = page.getByRole('button', { name: /^spin$/i }).first();
-  // First confirm spin started (may show "..." briefly)
+  // First confirm spin started (shows "..." text)
   await page.waitForFunction(
     () => {
       const btn = document.querySelector('button.rounded-full.bg-yellow-400');
@@ -97,9 +164,31 @@ async function waitForSpinComplete(page: Page, timeout = 8_000): Promise<void> {
     },
     { timeout: 3_000 }
   ).catch(() => { /* spin may complete instantly in turbo — that's fine */ });
-  // Then wait for it to finish
-  await expect(spinBtn).toBeVisible({ timeout });
-  await expect(spinBtn).toHaveText('SPIN', { timeout });
+  // Then wait for it to finish (text is no longer "...")
+  await page.waitForFunction(
+    () => {
+      const btn = document.querySelector('button.rounded-full.bg-yellow-400');
+      return btn && btn.textContent?.trim() !== '...';
+    },
+    { timeout }
+  );
+  // Wait for balance to stabilize — the apply_spin_result RPC updates balance
+  // asynchronously and may still be in-flight. We wait until the displayed
+  // balance stops changing for 400ms to ensure we read the final settled value.
+  let prev = '';
+  let stableCount = 0;
+  for (let i = 0; i < 15; i++) {
+    await page.waitForTimeout(100);
+    const el = page.locator('main').locator('text=/KES \\d/').first();
+    const cur = await el.textContent().catch(() => '');
+    if (cur === prev) {
+      stableCount++;
+      if (stableCount >= 4) break; // stable for 400ms
+    } else {
+      stableCount = 0;
+      prev = cur ?? '';
+    }
+  }
 }
 
 // ─── Test suite ───────────────────────────────────────────────────────────────

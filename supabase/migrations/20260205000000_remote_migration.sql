@@ -1,0 +1,1 @@
+-- Remote migration stub (already applied)

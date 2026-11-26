@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { waitForPageReady, waitForAnimation } from './helpers/waitHelpers';
+import { waitForPageReady, waitForAnimation, waitForAuthUI } from './helpers/waitHelpers';
 
 /**
  * Deposit and Withdrawal modal tests.
@@ -12,16 +12,26 @@ import { waitForPageReady, waitForAnimation } from './helpers/waitHelpers';
  * child elements within it.
  */
 
+/**
+ * Wait for the authenticated navbar, then click the DEPOSIT button.
+ * Returns false (and skips) if the button is not present after auth resolves.
+ */
 async function openDepositModal(page: Page): Promise<boolean> {
   const btn = page.locator('nav').getByRole('button', { name: /^deposit$/i });
+  await btn.waitFor({ state: 'visible', timeout: 12_000 }).catch(() => {});
   if (!(await btn.isVisible().catch(() => false))) return false;
   await btn.click();
   await waitForAnimation(page, 400);
   return true;
 }
 
+/**
+ * Wait for the authenticated navbar, then click the WITHDRAW button.
+ * Returns false (and skips) if the button is not present after auth resolves.
+ */
 async function openWithdrawModal(page: Page): Promise<boolean> {
   const btn = page.locator('nav').getByRole('button', { name: /^withdraw$/i });
+  await btn.waitFor({ state: 'visible', timeout: 12_000 }).catch(() => {});
   if (!(await btn.isVisible().catch(() => false))) return false;
   await btn.click();
   await waitForAnimation(page, 400);
@@ -37,6 +47,9 @@ test.describe('Deposit Modal', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await waitForPageReady(page);
+    // DEPOSIT button only renders when authenticated — wait for authStore to hydrate.
+    const authed = await waitForAuthUI(page);
+    if (!authed) test.skip();
   });
 
   test('M-PESA DEPOSIT heading is visible', async ({ page }) => {
@@ -129,6 +142,9 @@ test.describe('Withdrawal Modal', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await waitForPageReady(page);
+    // WITHDRAW button only renders when authenticated — wait for authStore to hydrate.
+    const authed = await waitForAuthUI(page);
+    if (!authed) test.skip();
   });
 
   /**

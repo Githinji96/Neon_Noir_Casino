@@ -83,67 +83,86 @@ export default function DashboardPage() {
       const ts = startOf('today');
       const ws = startOf('week');
       const ms = startOf('month');
-      if (import.meta.env.DEV) console.log('[Dashboard] timestamps:', { today: ts, week: ws, month: ms });
 
-      // Use RPC function to aggregate on DB side — avoids row limit issues
-      // Pass timestamps from client to avoid UTC/timezone mismatch
-      const [ggrResult, depositsResult, players, tables, jackpots] = await Promise.all([
-        supabase.rpc('get_ggr_summary', {
-          today_start: ts,
-          week_start: ws,
-          month_start: ms,
-        }),
-        Promise.all([
-          supabase.from('transactions').select('amount').eq('status', 'success').eq('type', 'deposit').gte('created_at', startOf('today')).limit(10000),
-          supabase.from('transactions').select('amount').eq('status', 'success').eq('type', 'deposit').gte('created_at', startOf('week')).limit(10000),
-          supabase.from('transactions').select('amount').eq('status', 'success').eq('type', 'deposit').gte('created_at', startOf('month')).limit(10000),
-        ]),
+      // Build 7-day trend window once
+      const trendStart = new Date();
+      trendStart.setDate(trendStart.getDate() - 6);
+      trendStart.setHours(0, 0, 0, 0);
+      const trendStartISO = trendStart.toISOString();
+
+      // ── Fire ALL queries in parallel — reduces wall-clock time from ~8s to ~2s ──
+      const [
+        ggrResult,
+        depositsAll,         // single query covering full month, filtered client-side
+        players,
+        tables,
+        jackpots,
+        fundsRes,
+        trendSpins,
+        trendMiniGames,
+        trendDeps,
+      ] = await Promise.all([
+        supabase.rpc('get_ggr_summary', { today_start: ts, week_start: ws, month_start: ms }),
+
+        // One deposit query covering the full month — split by day client-side
+        supabase.from('transactions')
+          .select('amount, created_at')
+          .eq('status', 'success')
+          .eq('type', 'deposit')
+          .gte('created_at', ms)
+          .limit(10000),
+
         supabase.from('profiles').select('id', { count: 'exact', head: true }),
         supabase.from('live_tables').select('id', { count: 'exact', head: true }).in('status', ['live', 'active']),
         supabase.from('jackpots').select('name, current_amount'),
+
+        supabase.rpc('get_casino_financial_summary', { p_start: null, p_end: null }),
+
+        supabase.from('spins').select('bet, payout, created_at')
+          .gte('created_at', trendStartISO).limit(10000),
+        supabase.from('mini_game_rounds').select('stake, payout, created_at')
+          .eq('phase', 'complete').gte('created_at', trendStartISO).limit(10000),
+        supabase.from('transactions').select('amount, created_at')
+          .eq('status', 'success').neq('type', 'withdrawal')
+          .gte('created_at', trendStartISO).limit(10000),
       ]);
 
-      const sumAmount = (rows: { amount: number }[] | null) =>
-        (rows ?? []).reduce((s, r) => s + (r.amount ?? 0), 0);
+      // ── Aggregate deposits by period client-side (one query instead of three) ──
+      const allDeps = depositsAll.data ?? [];
+      const sumFrom = (from: string) =>
+        allDeps.filter((r) => r.created_at >= from).reduce((s, r) => s + (r.amount ?? 0), 0);
 
       const ggr = ggrResult.data?.[0] ?? {
         ggr_today: 0, ggr_week: 0, ggr_month: 0,
         total_bets_month: 0, total_payouts_month: 0,
         spins_today: 0, spins_month: 0,
       };
-      if (import.meta.env.DEV) console.log('[Dashboard] ggrResult:', ggrResult.error, ggr);
 
-      const [depToday, depWeek, depMonth] = depositsResult;
       const jp = jackpots.data ?? [];
       const megaJP = jp.find((j: { name: string }) => j.name?.toLowerCase().includes('mega'))?.current_amount ?? 0;
 
       setMetrics({
-        ggrToday:         Number(ggr.ggr_today),
-        ggrWeek:          Number(ggr.ggr_week),
-        ggrMonth:         Number(ggr.ggr_month),
-        depositsToday:    sumAmount(depToday.data),
-        depositsWeek:     sumAmount(depWeek.data),
-        depositsMonth:    sumAmount(depMonth.data),
-        totalSpinsToday:  Number(ggr.spins_today),
-        totalSpinsMonth:  Number(ggr.spins_month),
-        totalBetsMonth:   Number(ggr.total_bets_month),
+        ggrToday:          Number(ggr.ggr_today),
+        ggrWeek:           Number(ggr.ggr_week),
+        ggrMonth:          Number(ggr.ggr_month),
+        depositsToday:     sumFrom(ts),
+        depositsWeek:      sumFrom(ws),
+        depositsMonth:     sumFrom(ms),
+        totalSpinsToday:   Number(ggr.spins_today),
+        totalSpinsMonth:   Number(ggr.spins_month),
+        totalBetsMonth:    Number(ggr.total_bets_month),
         totalPayoutsMonth: Number(ggr.total_payouts_month),
         rtpMonth: Number(ggr.total_bets_month) > 0
           ? Math.round((Number(ggr.total_payouts_month) / Number(ggr.total_bets_month)) * 1000) / 10
           : 0,
-        activePlayers:    players.count ?? 0,
-        liveTables:       tables.count ?? 0,
-        jackpotMega:      megaJP,
+        activePlayers: players.count ?? 0,
+        liveTables:    tables.count ?? 0,
+        jackpotMega:   megaJP,
       });
 
-      // Casino-level financial snapshot (all-time)
-      const fundsRes = await supabase.rpc('get_casino_financial_summary', {
-        p_start: null,
-        p_end:   null,
-      });
+      // ── Casino financial snapshot ──
       if (fundsRes.error) {
-        console.warn('[Dashboard] get_casino_financial_summary error (RPC may not be deployed yet):', fundsRes.error.message);
-        // Show zeros so the section renders — admin can see it needs DB migration
+        console.warn('[Dashboard] get_casino_financial_summary error:', fundsRes.error.message);
         setCasinoFunds({
           total_deposited: 0, total_withdrawn: 0, net_cash_flow: 0,
           player_funds: 0, ggr: 0, pending_deposits: 0,
@@ -163,20 +182,7 @@ export default function DashboardPage() {
         });
       }
 
-      // Build 7-day trend using a single DB call instead of 14 parallel queries
-      const trendStart = new Date();
-      trendStart.setDate(trendStart.getDate() - 6);
-      trendStart.setHours(0, 0, 0, 0);
-
-      const [trendSpins, trendDeps] = await Promise.all([
-        supabase.from('spins').select('bet, payout, created_at')
-          .gte('created_at', trendStart.toISOString()).limit(10000),
-        supabase.from('transactions').select('amount, created_at')
-          .eq('status', 'success').neq('type', 'withdrawal')
-          .gte('created_at', trendStart.toISOString()).limit(10000),
-      ]);
-
-      // Aggregate client-side by day
+      // ── 7-day revenue trend ──
       const dayMap: Record<string, { ggr: number; deposits: number }> = {};
       for (let i = 0; i < 7; i++) {
         const d = new Date(trendStart);
@@ -189,17 +195,22 @@ export default function DashboardPage() {
         const key = new Date(r.created_at).toLocaleDateString('en', { weekday: 'short' });
         if (dayMap[key]) dayMap[key].ggr += (r.bet ?? 0) - (r.payout ?? 0);
       });
+      (trendMiniGames.data ?? []).forEach((r: { stake: number; payout: number; created_at: string }) => {
+        const key = new Date(r.created_at).toLocaleDateString('en', { weekday: 'short' });
+        if (dayMap[key]) dayMap[key].ggr += (r.stake ?? 0) - (r.payout ?? 0);
+      });
       (trendDeps.data ?? []).forEach((r) => {
         const key = new Date(r.created_at).toLocaleDateString('en', { weekday: 'short' });
         if (dayMap[key]) dayMap[key].deposits += r.amount ?? 0;
       });
 
-      const trend = Object.entries(dayMap).map(([day, v]) => ({
-        day,
-        ggr: Math.max(0, Math.round(v.ggr)),
-        deposits: Math.round(v.deposits),
-      }));
-      setRevenueTrend(trend);
+      setRevenueTrend(
+        Object.entries(dayMap).map(([day, v]) => ({
+          day,
+          ggr:      Math.max(0, Math.round(v.ggr)),
+          deposits: Math.round(v.deposits),
+        }))
+      );
     } catch (err) {
       console.error('[DashboardPage]', err);
     } finally {
@@ -219,6 +230,12 @@ export default function DashboardPage() {
         fetchMetrics();
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'spins' }, () => {
+        fetchMetrics();
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'mini_game_rounds' }, () => {
+        fetchMetrics();
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'mini_game_rounds' }, () => {
         fetchMetrics();
       })
       .subscribe();
@@ -317,7 +334,7 @@ export default function DashboardPage() {
             <StatCard title="GGR Last 30 Days" value={`${metrics.ggrMonth < 0 ? '-' : ''}KES ${Math.abs(Math.round(metrics.ggrMonth)).toLocaleString()}`}     icon="📆" color={metrics.ggrMonth >= 0 ? 'green' : 'red'} />
             <StatCard title="Mega Jackpot"   value={fmt(metrics.jackpotMega)}  icon="🏆" color="yellow" />
             <StatCard title="Deposits Today" value={fmt(metrics.depositsToday)} icon="📲" color="green" />
-            <StatCard title="Spins Today"    value={metrics.totalSpinsToday}   icon="🎰" color="purple" />
+            <StatCard title="Rounds Today"   value={metrics.totalSpinsToday}   icon="🎰" color="purple" />
             <StatCard title="Active Players" value={metrics.activePlayers}     icon="👥" color="cyan" />
             <StatCard title="Live Tables"    value={metrics.liveTables}        icon="📡" color="purple" />
           </div>

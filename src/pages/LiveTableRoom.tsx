@@ -414,7 +414,7 @@ export default function LiveTableRoom() {
                     aria-label={`Select KES ${val}`}
                     onClick={() => addChip(val)}
                     disabled={phase !== 'betting'}
-                    className="py-2 rounded-xl font-orbitron font-bold text-xs tracking-wider transition-all active:scale-95 disabled:opacity-30"
+                    className="py-2 rounded-xl font-orbitron font-bold text-[10px] sm:text-xs tracking-wider transition-all active:scale-95 disabled:opacity-30"
                     style={{ background: `${accentColor}22`, color: accentColor, border: `1px solid ${accentColor}44` }}>
                     KES {val.toLocaleString()}
                   </button>

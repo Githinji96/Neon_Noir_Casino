@@ -51,14 +51,13 @@ export default function PopularChoicesSection({ onGameClick, sectionRef }: Popul
       </div>
 
       {/* Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 sm:gap-3 overflow-hidden">
         {POPULAR_GAMES.map((game) => (
           <motion.button
             key={game.id}
             onClick={() => onGameClick(game.id, game.title)}
             className="bg-black/40 backdrop-blur border border-white/10 rounded-xl p-4 flex flex-col items-center gap-2 text-left w-full"
             whileHover={{
-              scale: 1.05,
               borderColor: 'rgba(250, 204, 21, 0.6)',
               boxShadow: '0 0 16px rgba(250, 204, 21, 0.3)',
             }}

@@ -46,13 +46,14 @@ export default function NewArrivalsSection({ onGameClick, onSeeAll }: NewArrival
         @media (min-width: 1024px) { .na-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
       `}</style>
 
-      <div className="na-grid">
+      <div className="na-grid" style={{ overflow: 'hidden' }}>
         {NEW_ARRIVAL_GAMES.map((game) => (
           <GameCard
             key={game.id}
             id={game.id}
             title={game.title}
             thumbnail={game.thumbnail}
+            thumbnails={game.thumbnails}
             badge={game.badge}
             onClick={() => onGameClick(game.id, game.title)}
           />

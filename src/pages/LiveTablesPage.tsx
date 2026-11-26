@@ -93,12 +93,13 @@ export default function LiveTablesPage() {
           </div>
         </div>
 
-        {/* Category tabs */}
-        <div
-          className="tabs-scroll-strip mb-6"
-          style={{ width: '100vw', marginLeft: 'calc(-1 * ((100vw - 100%) / 2))', overflowX: 'auto' }}
-        >
-          <div className="flex gap-2 pb-2" style={{ paddingLeft: '12px', paddingRight: '12px', width: 'max-content', minWidth: '100vw' }}>
+        {/* Category tabs — contained scroll strip, no negative margins that cause page overflow */}
+        <div className="mb-6 overflow-hidden">
+          <div
+            className="tabs-scroll-strip"
+            style={{ overflowX: 'auto', overflowY: 'visible' }}
+          >
+            <div className="flex gap-2 pb-2" style={{ paddingLeft: '12px', paddingRight: '12px', width: 'max-content' }}>
             {GAME_CATEGORIES.map((cat) => (
               <button
                 key={cat.id}
@@ -119,6 +120,7 @@ export default function LiveTablesPage() {
               </button>
             ))}
           </div>
+        </div>
         </div>
 
         <div className="px-3 sm:px-6">
