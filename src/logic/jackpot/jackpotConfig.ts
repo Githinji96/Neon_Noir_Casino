@@ -116,7 +116,7 @@ export function buildConfigFromDB(row: {
   type?: string;
   base_amount: number;
   contribution_rate: number;
-  trigger_probability: number;
+  trigger_probability?: number; // omitted from player queries; use hardcoded fallback when absent
 }): JackpotConfig {
   const defaults = GAMEPLAY_DEFAULTS[row.id] ?? {};
   return {
@@ -128,7 +128,9 @@ export function buildConfigFromDB(row: {
     baseAmount:       row.base_amount,
     seedAmount:       row.base_amount,
     contributionRate: row.contribution_rate,
-    baseProbability:  row.trigger_probability,
+    // Use the provided value only when present (admin-side); otherwise keep the
+    // hardcoded fallback from GAMEPLAY_DEFAULTS / SAFE_GAMEPLAY_DEFAULTS.
+    baseProbability:  row.trigger_probability ?? defaults.minProbability ?? SAFE_GAMEPLAY_DEFAULTS.minProbability,
   };
 }
 

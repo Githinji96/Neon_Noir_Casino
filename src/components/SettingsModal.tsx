@@ -32,9 +32,9 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-4 py-3 border-b border-white/5">
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-3 border-b border-white/5">
       <span className="text-white/70 text-sm shrink-0">{label}</span>
-      <div className="flex items-center gap-2 min-w-0">{children}</div>
+      <div className="flex items-center gap-2 min-w-0 flex-wrap">{children}</div>
     </div>
   );
 }
@@ -198,8 +198,9 @@ export default function SettingsModal() {
                 : 'linear-gradient(160deg, #0d0020 0%, #050010 100%)',
               borderRight: `1px solid ${settings.theme === 'light' ? 'rgba(0,0,0,0.12)' : 'rgba(255,215,0,0.15)'}`,
               boxShadow: '8px 0 40px rgba(0,0,0,0.3)',
-              width: '520px',
-              height: '100vh',
+              width: 'min(520px, 100vw)',
+              maxWidth: '100vw',
+              height: '100dvh',
             }}
           >
             {/* Header */}
@@ -213,7 +214,7 @@ export default function SettingsModal() {
 
             <div className="flex min-h-0 flex-1 overflow-hidden">
               {/* Sidebar */}
-              <div className="w-44 shrink-0 border-r border-white/10 flex flex-col py-3 overflow-y-auto">
+              <div className="w-36 sm:w-44 shrink-0 border-r border-white/10 flex flex-col py-3 overflow-y-auto">
                 <div className="flex flex-col gap-1 flex-1">
                   {TABS.map((t) => (
                     <button key={t.id} onClick={() => setTab(t.id)}
@@ -250,7 +251,7 @@ export default function SettingsModal() {
                     <SectionTitle>M-Pesa Account</SectionTitle>
                     <Row label="Registered Number">
                       {profile?.phone ? (
-                        <span className="font-orbitron text-sm text-white">
+                        <span className="font-orbitron text-sm text-white truncate max-w-[140px]">
                           {(() => {
                             const n = normalizeKenyanPhone(profile.phone);
                             const d = n.startsWith('254') ? n.slice(3) : n;
@@ -527,8 +528,8 @@ export default function SettingsModal() {
               </div>
             </div>
 
-            {/* Footer */}
-            <div className="px-6 py-3 border-t border-white/10 flex items-center justify-between shrink-0">
+            {/* Footer — extra bottom padding on mobile so Save clears the BottomNav */}
+            <div className="px-6 py-3 pb-[calc(0.75rem+68px)] md:pb-3 border-t border-white/10 flex items-center justify-between shrink-0">
               <p className="text-white/20 text-xs">Changes saved locally</p>
               <button onClick={handleSave}
                 className="px-6 py-2 rounded-xl font-orbitron text-sm font-bold tracking-widest text-black transition-all"

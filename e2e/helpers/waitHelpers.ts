@@ -29,6 +29,28 @@ export async function waitForPageReady(page: Page, timeout = 8_000): Promise<voi
 }
 
 /**
+ * Wait for the authenticated navbar UI to appear.
+ *
+ * authStore.init() calls supabase.auth.getSession() then fetches the player
+ * profile — this can take up to ~5 s on first load. Auth-gated elements
+ * (⚙️ button, bell, DEPOSIT/WITHDRAW buttons) only render after that
+ * completes, so a plain isVisible() check immediately after waitForPageReady
+ * returns false and silently skips the test.
+ *
+ * This helper waits for the navbar balance element (data-testid="navbar-balance")
+ * which appears as soon as the session is confirmed and profile is loaded.
+ * Returns true when authenticated, false when no session could be confirmed
+ * within the timeout.
+ */
+export async function waitForAuthUI(page: Page, timeout = 12_000): Promise<boolean> {
+  return page
+    .getByTestId('navbar-balance')
+    .waitFor({ state: 'visible', timeout })
+    .then(() => true)
+    .catch(() => false);
+}
+
+/**
  * Scroll to the bottom of the page so lazy-rendered sections (e.g. Footer)
  * enter the viewport and become visible.
  */

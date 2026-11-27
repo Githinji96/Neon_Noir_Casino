@@ -45,22 +45,63 @@ export const GAME_CATEGORIES: { id: GameType | 'all'; label: string; icon: strin
 export const CHIP_VALUES = [1, 5, 10, 50, 100, 500];
 
 /**
- * Generate chip values that fit within a table's bet range.
- * Always includes the minBet as the smallest chip.
+ * Generate up to 6 chip values that span a table's full bet range.
+ * The first chip is always ≥ minBet; the last chip is always = maxBet.
+ * Middle chips are spread evenly so players can reach the max in one click.
+ *
+ * Example — pk-1 (min=25, max=10000):
+ *   candidates: [25, 50, 100, 250, 500, 1000, 2500, 5000, 10000]
+ *   result:     [25, 100, 500, 1000, 2500, 10000]
  */
 export function getTableChipValues(minBet: number | string, maxBet: number | string): number[] {
   const min = Number(minBet);
   const max = Number(maxBet);
-  // Standard chip denominations
-  const all = [1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000];
-  // Filter to chips within range
-  let valid = all.filter((c) => c >= min && c <= max);
-  // Always include minBet as first chip
-  if (valid.length === 0 || valid[0] !== min) {
-    valid = [min, ...valid.filter((c) => c > min)];
+
+  // All standard casino chip denominations
+  const ALL_CHIPS = [1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000];
+
+  // Build candidate list: standard chips in [min, max], then append max if missing
+  const candidates: number[] = [];
+  for (const c of ALL_CHIPS) {
+    if (c >= min && c <= max) candidates.push(c);
   }
-  // Cap at 6 chips
-  return valid.slice(0, 6);
+  // Ensure minBet is first
+  if (candidates.length === 0 || candidates[0] !== min) {
+    candidates.unshift(min);
+  }
+  // Ensure maxBet is last
+  if (candidates[candidates.length - 1] !== max) {
+    candidates.push(max);
+  }
+
+  // Deduplicate
+  const unique = [...new Set(candidates)];
+
+  // 6 or fewer — return as-is
+  if (unique.length <= 6) return unique;
+
+  // More than 6 — pick exactly 6: first, last, and 4 evenly-spaced middle items
+  const result: number[] = [unique[0]];
+  const last = unique[unique.length - 1];
+  const inner = unique.slice(1, -1); // everything except first and last
+
+  // Pick 4 evenly-spread indices from the inner array
+  const picks = 4;
+  const step = (inner.length - 1) / (picks - 1);
+  for (let i = 0; i < picks; i++) {
+    const idx = Math.round(i * step);
+    const val = inner[Math.min(idx, inner.length - 1)];
+    if (val !== result[result.length - 1]) {
+      result.push(val);
+    }
+  }
+
+  // Always ensure the max chip is the final entry
+  if (result[result.length - 1] !== last) {
+    result.push(last);
+  }
+
+  return result;
 }
 
 // Payout multipliers per game

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
@@ -39,11 +39,61 @@ export default function LoginPage() {
     // On success, Supabase redirects the browser — no navigate() needed
   };
 
-  const { register, handleSubmit, formState: { errors }, clearErrors } = useForm<LoginFormData>({
+  const { register, handleSubmit, formState: { errors }, clearErrors, reset } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
-    mode: 'onSubmit',      // only validate on submit, not on every keystroke
-    reValidateMode: 'onChange', // re-validate after first submit attempt on each change
+    mode: 'onSubmit',
+    reValidateMode: 'onChange',
   });
+
+  // Refs to the underlying <input> DOM nodes so we can clear them directly.
+  // Edge/Chromium re-injects saved credentials into the DOM well after React
+  // renders — sometimes 300-500ms later — bypassing react-hook-form's reset()
+  // and ignoring autoComplete="off". Writing '' directly to the native input
+  // value via the HTMLInputElement prototype setter (which bypasses React's
+  // controlled-value cache) is the only technique that reliably defeats this.
+  const emailInputRef    = useRef<HTMLInputElement | null>(null);
+  const passwordInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Merge react-hook-form's ref with our DOM ref so both work together
+  const { ref: rhfEmailRef,    ...emailRegister    } = register('email', {
+    onChange: () => {
+      if (serverError) setServerError('');
+      if (errors.email) clearErrors('email');
+    },
+  });
+  const { ref: rhfPasswordRef, ...passwordRegister } = register('password', {
+    onChange: () => {
+      if (serverError) setServerError('');
+      if (errors.password) clearErrors('password');
+    },
+  });
+
+  // Defeat Edge/Chromium autofill: clear native input values at 0, 100, and
+  // 400ms. The triple-fire covers browsers that inject at different points in
+  // the page lifecycle. Using the native setter + a bubbling 'input' event
+  // ensures React and react-hook-form both see the cleared value.
+  useEffect(() => {
+    const nativeSetter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype, 'value'
+    )?.set;
+
+    function clearInputs() {
+      for (const ref of [emailInputRef, passwordInputRef]) {
+        const el = ref.current;
+        if (!el || el.value === '') continue;
+        nativeSetter?.call(el, '');
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    }
+
+    clearInputs();
+    const t1 = setTimeout(clearInputs, 100);
+    const t2 = setTimeout(clearInputs, 400);
+    // Also reset react-hook-form's internal state to match
+    const t3 = setTimeout(() => reset({ email: '', password: '' }), 50);
+
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Clear stale server error whenever the user edits either field
   const handleFieldChange = () => {
@@ -51,13 +101,11 @@ export default function LoginPage() {
   };
 
   const onSubmit = async (data: LoginFormData) => {
-    // zod already validated — clear any stale server error before the request
     setServerError('');
     setLoading(true);
     const err = await signIn(data.email, data.password);
     setLoading(false);
     if (err) {
-      // Map Supabase's raw error message to a user-friendly string
       const normalized = err.toLowerCase();
       if (normalized.includes('invalid login credentials') || normalized.includes('invalid_credentials')) {
         setServerError('Invalid email or password. Please try again.');
@@ -71,7 +119,6 @@ export default function LoginPage() {
         setServerError(err);
       }
     } else {
-      // Navigate back to where the user was trying to go, preserving state
       if (from) {
         navigate(from.pathname, { state: from.state, replace: true });
       } else {
@@ -82,7 +129,7 @@ export default function LoginPage() {
 
   return (
     <AuthCard title="Welcome Back" subtitle="Sign in to your account to continue playing">
-      <form onSubmit={handleSubmit(onSubmit)} noValidate className="flex flex-col gap-4">
+      <form onSubmit={handleSubmit(onSubmit)} noValidate autoComplete="off" className="flex flex-col gap-4">
         {/* Session-expired message — shown once after inactivity logout */}
         {inactivityExpired && (
           <AuthAlert
@@ -95,34 +142,42 @@ export default function LoginPage() {
 
         <InputField
           label="Email"
-          type="text"          // use text — zod handles email validation, avoids dual browser+zod errors
-          inputMode="email"    // shows email keyboard on mobile
+          type="text"
+          inputMode="email"
           placeholder="player@example.com"
           icon="✉️"
-          autoComplete="email"
+          autoComplete="off"
           error={errors.email?.message}
           aria-invalid={!!errors.email}
           aria-describedby={errors.email ? 'email-error' : undefined}
-          {...register('email', {
-            onChange: () => {
-              handleFieldChange();
-              if (errors.email) clearErrors('email');
-            },
-          })}
+          ref={(el) => {
+            rhfEmailRef(el);
+            emailInputRef.current = el;
+          }}
+          {...emailRegister}
+          onChange={(e) => {
+            handleFieldChange();
+            if (errors.email) clearErrors('email');
+            emailRegister.onChange(e);
+          }}
         />
 
         <PasswordField
           label="Password"
           placeholder="Enter your password"
-          autoComplete="current-password"
+          autoComplete="new-password"
           error={errors.password?.message}
           aria-invalid={!!errors.password}
-          {...register('password', {
-            onChange: () => {
-              handleFieldChange();
-              if (errors.password) clearErrors('password');
-            },
-          })}
+          ref={(el) => {
+            rhfPasswordRef(el);
+            passwordInputRef.current = el;
+          }}
+          {...passwordRegister}
+          onChange={(e) => {
+            handleFieldChange();
+            if (errors.password) clearErrors('password');
+            passwordRegister.onChange(e);
+          }}
         />
 
         {/* Remember me + Forgot password */}

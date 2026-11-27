@@ -26,7 +26,7 @@ const ACCOUNT_LINKS = [
 
 const SUPPORT_LINKS = [
   { label: 'Help Center',           path: '/contact' },
-  { label: 'FAQ',                   path: '/contact' },
+  { label: 'FAQ',                   path: '/faq' },
   { label: 'Contact Support',       path: '/contact' },
   { label: 'Terms & Conditions',    path: '/terms' },
   { label: 'Privacy Policy',        path: '/privacy-policy' },
@@ -34,13 +34,59 @@ const SUPPORT_LINKS = [
   { label: 'Responsible Gambling',  path: '/contact' },
 ];
 
-const SOCIAL = [
-  { label: 'Facebook',  href: '#', icon: 'M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z' },
-  { label: 'X',         href: '#', icon: 'M4 4l16 16M4 20L20 4' },
-  { label: 'Instagram', href: '#', icon: 'M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37zm1.5-4.87h.01M6.5 6.5h11a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1z' },
-  { label: 'Telegram',  href: '#', icon: 'M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z' },
-  { label: 'Discord',   href: '#', icon: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z' },
-  { label: 'YouTube',   href: '#', icon: 'M22.54 6.42a2.78 2.78 0 0 0-1.95-1.96C18.88 4 12 4 12 4s-6.88 0-8.59.46A2.78 2.78 0 0 0 1.46 6.42 29 29 0 0 0 1 12a29 29 0 0 0 .46 5.58A2.78 2.78 0 0 0 3.41 19.6C5.12 20 12 20 12 20s6.88 0 8.59-.46a2.78 2.78 0 0 0 1.95-1.95A29 29 0 0 0 23 12a29 29 0 0 0-.46-5.58zM9.75 15.02V8.98l5.75 3.02-5.75 3.02z' },
+// ─── Social media profile URLs ────────────────────────────────────────────────
+// TO CONFIGURE: Replace each URL with the casino's actual social profile.
+const SOCIAL_URLS: Record<string, string | null> = {
+  facebook:  'https://www.facebook.com',
+  x:         'https://x.com',
+  instagram: 'https://www.instagram.com',
+  telegram:  'https://telegram.org',
+  discord:   'https://discord.com',
+  youtube:   'https://www.youtube.com',
+};
+
+// Each entry: label, href key, and inline SVG path + render mode
+// mode 'stroke' = outlined icons; mode 'fill' = solid icons
+const SOCIAL: { label: string; href: string | null; icon: string; mode: 'stroke' | 'fill' }[] = [
+  {
+    label: 'Facebook',
+    href:  SOCIAL_URLS.facebook,
+    mode:  'stroke',
+    icon:  'M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z',
+  },
+  {
+    label: 'X (Twitter)',
+    href:  SOCIAL_URLS.x,
+    mode:  'stroke',
+    // Two diagonal lines forming X
+    icon:  'M4 4l16 16M4 20L20 4',
+  },
+  {
+    label: 'Instagram',
+    href:  SOCIAL_URLS.instagram,
+    mode:  'stroke',
+    icon:  'M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37zm1.5-4.87h.01M6.5 6.5h11a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1z',
+  },
+  {
+    label: 'Telegram',
+    href:  SOCIAL_URLS.telegram,
+    mode:  'stroke',
+    icon:  'M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z',
+  },
+  {
+    label: 'Discord',
+    href:  SOCIAL_URLS.discord,
+    mode:  'stroke',
+    // Simplified chat-bubble Discord approximation using stroke paths
+    icon:  'M8.5 12a.5.5 0 1 0 0-1 .5.5 0 0 0 0 1zm7 0a.5.5 0 1 0 0-1 .5.5 0 0 0 0 1zM3 9.5C4 6 8 4 12 4s8 2 9 5.5c.5 2 .5 4 0 5C19.5 18 16 21 12 21S4.5 18 3 14.5c-.5-1-.5-3 0-5z',
+  },
+  {
+    label: 'YouTube',
+    href:  SOCIAL_URLS.youtube,
+    mode:  'stroke',
+    // Play-button-in-rounded-rect icon
+    icon:  'M22.54 6.42a2.78 2.78 0 0 0-1.95-1.96C18.88 4 12 4 12 4s-6.88 0-8.59.46A2.78 2.78 0 0 0 1.46 6.42 29 29 0 0 0 1 12a29 29 0 0 0 .46 5.58A2.78 2.78 0 0 0 3.41 19.6C5.12 20 12 20 12 20s6.88 0 8.59-.46a2.78 2.78 0 0 0 1.95-1.95A29 29 0 0 0 23 12a29 29 0 0 0-.46-5.58zM9.75 15.02V8.98l5.75 3.02-5.75 3.02z',
+  },
 ];
 
 const BOTTOM_LINKS = [
@@ -77,29 +123,52 @@ function FooterLink({ label, path, onClick }: { label: string; path: string; onC
   );
 }
 
-function SocialIcon({ label, href, icon }: { label: string; href: string; icon: string }) {
-  return (
-    <a
-      href={href}
-      aria-label={label}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="w-9 h-9 rounded-full flex items-center justify-center border border-white/10 text-white/40
-        hover:text-[#FFD700] hover:border-[#FFD700]/50 hover:shadow-[0_0_12px_rgba(255,215,0,0.3)]
-        transition-all duration-200"
+function SocialIcon({ label, href, icon, mode }: { label: string; href: string | null; icon: string; mode: 'stroke' | 'fill' }) {
+  const isConfigured = href !== null && href !== '' && href !== '#';
+
+  const sharedClassName =
+    'w-9 h-9 rounded-full flex items-center justify-center border border-white/10 text-white/40 ' +
+    'hover:text-[#FFD700] hover:border-[#FFD700]/50 hover:shadow-[0_0_12px_rgba(255,215,0,0.3)] ' +
+    'transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700]/60';
+
+  const svgContent = (
+    <svg
+      viewBox="0 0 24 24"
+      fill={mode === 'fill' ? 'currentColor' : 'none'}
+      stroke={mode === 'stroke' ? 'currentColor' : 'none'}
+      strokeWidth={mode === 'stroke' ? 1.8 : 0}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="w-4 h-4"
+      aria-hidden="true"
     >
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={1.8}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="w-4 h-4"
+      <path d={icon} />
+    </svg>
+  );
+
+  if (isConfigured) {
+    return (
+      <a
+        href={href!}
+        aria-label={label}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={sharedClassName}
       >
-        <path d={icon} />
-      </svg>
-    </a>
+        {svgContent}
+      </a>
+    );
+  }
+
+  return (
+    <span
+      role="img"
+      aria-label={`${label} (not yet configured)`}
+      title={`${label} — social URL not yet configured`}
+      className={sharedClassName + ' opacity-50 cursor-default'}
+    >
+      {svgContent}
+    </span>
   );
 }
 

@@ -31,6 +31,8 @@ interface SpinRow {
   payout:     number;
   ggr:        number;
   result:     'WIN' | 'PUSH' | 'LOSS';
+  multiplier?: number;   // only for mini_game rounds
+  source?:    'slot' | 'mini_game';
 }
 
 type DatePreset = 'today' | 'yesterday' | 'last7' | 'last30' | 'custom';
@@ -57,8 +59,17 @@ function fmt(n: number) {
   return `KES ${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+const MINI_GAME_NAMES: Record<string, string> = {
+  'lucky-wheel':        'Neon Lucky Wheel',
+  'scratch-cards':      'Neon Scratch Cards',
+  'treasure-chest':     'Cyber Treasure Chest',
+  'mini-slot':          'Mini Slot Jackpot',
+  'mystery-multiplier': 'Mystery Multiplier',
+  'crystal-match':      'Crystal Match',
+};
+
 function gameLabel(gameId: string) {
-  // Live table games are stored as "live_blackjack", "live_roulette" etc.
+  if (MINI_GAME_NAMES[gameId]) return MINI_GAME_NAMES[gameId];
   if (gameId.startsWith('live_')) {
     const type = gameId.replace('live_', '');
     return `Live ${type.charAt(0).toUpperCase()}${type.slice(1)}`;
@@ -73,6 +84,15 @@ const PAGE_SIZE = 25;
 
 interface GameOption { id: string; label: string; }
 interface GameGroup  { label: string; options: GameOption[]; }
+
+const MINI_GAME_OPTIONS: GameOption[] = [
+  { id: 'lucky-wheel',        label: 'Neon Lucky Wheel'     },
+  { id: 'scratch-cards',      label: 'Neon Scratch Cards'   },
+  { id: 'treasure-chest',     label: 'Cyber Treasure Chest' },
+  { id: 'mini-slot',          label: 'Mini Slot Jackpot'    },
+  { id: 'mystery-multiplier', label: 'Mystery Multiplier'   },
+  { id: 'crystal-match',      label: 'Crystal Match'        },
+];
 
 const SLOT_OPTIONS: GameOption[] = (() => {
   const seen = new Set<string>();
@@ -107,13 +127,15 @@ const LIVE_OPTIONS: GameOption[] = [
 ];
 
 const GAME_GROUPS: GameGroup[] = [
-  { label: 'Jackpots',    options: JACKPOT_OPTIONS },
-  { label: 'Slots',       options: SLOT_OPTIONS    },
-  { label: 'Live Tables', options: LIVE_OPTIONS    },
+  { label: 'Mini Jackpot Games', options: MINI_GAME_OPTIONS },
+  { label: 'Jackpots',           options: JACKPOT_OPTIONS   },
+  { label: 'Slots',              options: SLOT_OPTIONS      },
+  { label: 'Live Tables',        options: LIVE_OPTIONS      },
 ];
 
 const ALL_OPTIONS: GameOption[] = [
   { id: '', label: 'All Games' },
+  ...MINI_GAME_OPTIONS,
   ...JACKPOT_OPTIONS,
   ...SLOT_OPTIONS,
   ...LIVE_OPTIONS,
@@ -163,9 +185,9 @@ function GameDropdown({ value, onChange }: GameDropdownProps) {
         className="w-full flex items-center justify-between gap-3 px-4 py-2 rounded-xl text-sm font-orbitron transition-all focus:outline-none"
         style={{
           background:   'rgba(255,255,255,0.04)',
-          border:       `1px solid ${open ? 'rgba(168,85,247,0.5)' : 'rgba(255,255,255,0.10)'}`,
-          color:        value ? '#a855f7' : 'rgba(255,255,255,0.65)',
-          boxShadow:    open ? '0 0 12px rgba(168,85,247,0.15)' : 'none',
+          border:       `1px solid ${open ? 'rgba(255,215,0,0.5)' : 'rgba(255,255,255,0.10)'}`,
+          color:        value ? '#FFD700' : 'rgba(255,255,255,0.65)',
+          boxShadow:    open ? '0 0 12px rgba(255,215,0,0.15)' : 'none',
         }}
       >
         <span className="truncate">{selectedLabel}</span>
@@ -186,11 +208,11 @@ function GameDropdown({ value, onChange }: GameDropdownProps) {
           className="absolute left-0 z-50 mt-1.5 w-full overflow-y-auto rounded-xl py-1.5"
           style={{
             background:   '#0d0d1a',
-            border:       '1px solid rgba(168,85,247,0.22)',
-            boxShadow:    '0 8px 32px rgba(0,0,0,0.7), 0 0 0 1px rgba(168,85,247,0.08)',
+            border:       '1px solid rgba(255,215,0,0.22)',
+            boxShadow:    '0 8px 32px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,215,0,0.08)',
             maxHeight:    320,
             scrollbarWidth: 'thin',
-            scrollbarColor: 'rgba(168,85,247,0.25) transparent',
+            scrollbarColor: 'rgba(255,215,0,0.25) transparent',
           }}
         >
           {/* ALL GAMES option */}
@@ -210,7 +232,7 @@ function GameDropdown({ value, onChange }: GameDropdownProps) {
               {/* Category header */}
               <div
                 className="px-4 pt-2 pb-1 font-orbitron text-[10px] tracking-[0.2em] uppercase select-none"
-                style={{ color: 'rgba(168,85,247,0.55)' }}
+                style={{ color: 'rgba(255,215,0,0.55)' }}
               >
                 {group.label}
               </div>
@@ -250,16 +272,16 @@ function DropdownOption({ id, label, selected, onSelect }: DropdownOptionProps) 
       className="px-4 py-2 cursor-pointer text-sm font-orbitron tracking-wide transition-colors outline-none"
       style={{
         background: selected
-          ? 'rgba(168,85,247,0.12)'
+          ? 'rgba(255,215,0,0.10)'
           : hovered
-          ? 'rgba(168,85,247,0.07)'
+          ? 'rgba(255,215,0,0.06)'
           : 'transparent',
         color: selected
-          ? '#c084fc'
+          ? '#FFD700'
           : hovered
-          ? 'rgba(192,132,252,0.9)'
+          ? 'rgba(255,215,0,0.85)'
           : 'rgba(255,255,255,0.60)',
-        borderLeft: selected ? '2px solid rgba(168,85,247,0.7)' : '2px solid transparent',
+        borderLeft: selected ? '2px solid rgba(255,215,0,0.7)' : '2px solid transparent',
       }}
     >
       {label}
@@ -432,7 +454,7 @@ export default function BetHistoryPage() {
         <h2 className="font-orbitron text-2xl font-bold text-white">
           🎰 <span className="text-[#FFD700]">{username}</span>
         </h2>
-        <p className="text-white/30 text-xs mt-1">Read-only. Source: spins table.</p>
+        <p className="text-white/30 text-xs mt-1">Read-only. Sources: spins + mini_game_rounds tables.</p>
       </div>
 
       {/* ── Filters ── */}
@@ -578,7 +600,7 @@ export default function BetHistoryPage() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-white/10 bg-white/5">
-                        {['Date / Time', 'Game', 'Bet ID', 'Bet Amount', 'Win / Payout', 'Net', 'Result'].map((h) => (
+                        {['Date / Time', 'Game', 'Bet ID', 'Bet Amount', 'Win / Payout', 'Net', 'Result', 'Multiplier'].map((h) => (
                           <th key={h} className="px-4 py-3 text-left text-xs uppercase tracking-widest text-white/50 whitespace-nowrap">{h}</th>
                         ))}
                       </tr>
@@ -594,7 +616,16 @@ export default function BetHistoryPage() {
                               hour: '2-digit', minute: '2-digit',
                             })}
                           </td>
-                          <td className="px-4 py-3 text-white/80 whitespace-nowrap">{gameLabel(spin.game_id)}</td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <div className="flex items-center gap-1.5">
+                              {spin.source === 'mini_game' && (
+                                <span className="text-[9px] px-1.5 py-0.5 rounded font-orbitron font-bold uppercase bg-purple-500/20 text-purple-300 border border-purple-500/30 shrink-0">
+                                  Mini
+                                </span>
+                              )}
+                              <span className="text-white/80">{gameLabel(spin.game_id)}</span>
+                            </div>
+                          </td>
                           <td className="px-4 py-3 font-mono text-white/30 text-xs">{spin.id.slice(0, 8).toUpperCase()}</td>
                           <td className="px-4 py-3 font-mono text-white/80">{fmt(spin.bet)}</td>
                           <td className="px-4 py-3 font-mono text-green-400">{fmt(spin.payout)}</td>
@@ -611,6 +642,9 @@ export default function BetHistoryPage() {
                             }`}>
                               {spin.result}
                             </span>
+                          </td>
+                          <td className="px-4 py-3 font-mono text-white/50 text-xs">
+                            {spin.multiplier != null ? `${spin.multiplier.toFixed(2)}×` : '—'}
                           </td>
                         </tr>
                         );

@@ -1,12 +1,12 @@
 import { test, expect } from '@playwright/test';
 import { SettingsModalPage } from './pages/SettingsModalPage';
 import { ChangeMpesaModalPage } from './pages/ChangeMpesaModalPage';
-import { waitForPageReady, waitForAnimation } from './helpers/waitHelpers';
+import { waitForPageReady, waitForAnimation, waitForAuthUI } from './helpers/waitHelpers';
 
 /**
  * Settings modal tests.
  * Uses SettingsModalPage and ChangeMpesaModalPage POMs.
- * Tests skip gracefully when the ⚙️ button is absent (anonymous sessions).
+ * Requires an authenticated session — the ⚙️ button only renders when logged in.
  */
 
 test.describe('Settings Modal', () => {
@@ -16,22 +16,22 @@ test.describe('Settings Modal', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await waitForPageReady(page);
+    // Wait for authStore to hydrate — the ⚙️ button only renders once the
+    // session is confirmed and profile is loaded (up to ~5 s on first load).
+    const authed = await waitForAuthUI(page);
+    if (!authed) test.skip();
   });
 
   // ── Open / Close ───────────────────────────────────────────────────
 
   test('settings panel opens when ⚙️ is clicked', async ({ page }) => {
     const s = new SettingsModalPage(page);
-    const visible = await page.locator('nav button').filter({ hasText: '⚙️' }).isVisible().catch(() => false);
-    if (!visible) test.skip();
     await s.open();
     await expect(s.heading).toBeVisible({ timeout: 5_000 });
   });
 
   test('settings panel closes when ✕ is clicked', async ({ page }) => {
     const s = new SettingsModalPage(page);
-    const visible = await page.locator('nav button').filter({ hasText: '⚙️' }).isVisible().catch(() => false);
-    if (!visible) test.skip();
     await s.open();
     await s.close();
     await expect(s.heading).not.toBeVisible();
@@ -39,8 +39,6 @@ test.describe('Settings Modal', () => {
 
   test('settings panel closes when Escape is pressed', async ({ page }) => {
     const s = new SettingsModalPage(page);
-    const visible = await page.locator('nav button').filter({ hasText: '⚙️' }).isVisible().catch(() => false);
-    if (!visible) test.skip();
     await s.open();
     await page.keyboard.press('Escape');
     await waitForAnimation(page, 400);
@@ -51,8 +49,6 @@ test.describe('Settings Modal', () => {
 
   test('all sidebar tabs are visible', async ({ page }) => {
     const s = new SettingsModalPage(page);
-    const visible = await page.locator('nav button').filter({ hasText: '⚙️' }).isVisible().catch(() => false);
-    if (!visible) test.skip();
     await s.open();
     for (const tab of [s.tabAccount, s.tabSecurity, s.tabGame, s.tabNotifications, s.tabPreferences]) {
       await expect(tab.first()).toBeVisible();
@@ -61,8 +57,6 @@ test.describe('Settings Modal', () => {
 
   test('Account tab is active by default', async ({ page }) => {
     const s = new SettingsModalPage(page);
-    const visible = await page.locator('nav button').filter({ hasText: '⚙️' }).isVisible().catch(() => false);
-    if (!visible) test.skip();
     await s.open();
     const cls = await s.tabAccount.first().getAttribute('class') ?? '';
     expect(cls).toMatch(/yellow/i);
@@ -70,8 +64,6 @@ test.describe('Settings Modal', () => {
 
   test('Security tab shows Change Password fields', async ({ page }) => {
     const s = new SettingsModalPage(page);
-    const visible = await page.locator('nav button').filter({ hasText: '⚙️' }).isVisible().catch(() => false);
-    if (!visible) test.skip();
     await s.open();
     await s.goToTab('security');
     await expect(s.newPasswordInput).toBeVisible();
@@ -79,8 +71,6 @@ test.describe('Settings Modal', () => {
 
   test('Game tab shows Sound Effects toggle', async ({ page }) => {
     const s = new SettingsModalPage(page);
-    const visible = await page.locator('nav button').filter({ hasText: '⚙️' }).isVisible().catch(() => false);
-    if (!visible) test.skip();
     await s.open();
     await s.goToTab('game');
     await expect(page.locator('span').filter({ hasText: /sound effects/i })).toBeVisible();
@@ -88,8 +78,6 @@ test.describe('Settings Modal', () => {
 
   test('Notifications tab shows toggles', async ({ page }) => {
     const s = new SettingsModalPage(page);
-    const visible = await page.locator('nav button').filter({ hasText: '⚙️' }).isVisible().catch(() => false);
-    if (!visible) test.skip();
     await s.open();
     await s.goToTab('notifications');
     await expect(page.locator('span').filter({ hasText: /promotions/i })).toBeVisible();
@@ -99,16 +87,12 @@ test.describe('Settings Modal', () => {
 
   test('Account tab shows Email label', async ({ page }) => {
     const s = new SettingsModalPage(page);
-    const visible = await page.locator('nav button').filter({ hasText: '⚙️' }).isVisible().catch(() => false);
-    if (!visible) test.skip();
     await s.open();
     await expect(page.locator('span').filter({ hasText: /^Email$/ }).first()).toBeVisible();
   });
 
   test('Account tab shows M-Pesa Change/Add button', async ({ page }) => {
     const s = new SettingsModalPage(page);
-    const visible = await page.locator('nav button').filter({ hasText: '⚙️' }).isVisible().catch(() => false);
-    if (!visible) test.skip();
     await s.open();
     await expect(s.changeMpesaBtn.first()).toBeVisible();
   });
@@ -117,8 +101,6 @@ test.describe('Settings Modal', () => {
 
   test('password mismatch shows "Passwords do not match" error', async ({ page }) => {
     const s = new SettingsModalPage(page);
-    const visible = await page.locator('nav button').filter({ hasText: '⚙️' }).isVisible().catch(() => false);
-    if (!visible) test.skip();
     await s.open();
     await s.goToTab('security');
     await s.newPasswordInput.fill('Password123!');
@@ -129,8 +111,6 @@ test.describe('Settings Modal', () => {
 
   test('short password shows "Min 8 characters" error', async ({ page }) => {
     const s = new SettingsModalPage(page);
-    const visible = await page.locator('nav button').filter({ hasText: '⚙️' }).isVisible().catch(() => false);
-    if (!visible) test.skip();
     await s.open();
     await s.goToTab('security');
     await s.newPasswordInput.fill('short');
@@ -143,8 +123,6 @@ test.describe('Settings Modal', () => {
 
   test('SAVE button is visible', async ({ page }) => {
     const s = new SettingsModalPage(page);
-    const visible = await page.locator('nav button').filter({ hasText: '⚙️' }).isVisible().catch(() => false);
-    if (!visible) test.skip();
     await s.open();
     await expect(s.saveBtn.first()).toBeVisible();
   });
@@ -153,8 +131,6 @@ test.describe('Settings Modal', () => {
 
   test('Change M-Pesa modal opens from Account tab', async ({ page }) => {
     const s = new SettingsModalPage(page);
-    const visible = await page.locator('nav button').filter({ hasText: '⚙️' }).isVisible().catch(() => false);
-    if (!visible) test.skip();
     await s.open();
     await s.changeMpesaBtn.first().click();
     const modal = new ChangeMpesaModalPage(page);
@@ -166,8 +142,6 @@ test.describe('Settings Modal', () => {
 
   test('Change M-Pesa modal closes on ✕ click', async ({ page }) => {
     const s = new SettingsModalPage(page);
-    const visible = await page.locator('nav button').filter({ hasText: '⚙️' }).isVisible().catch(() => false);
-    if (!visible) test.skip();
     await s.open();
     await s.changeMpesaBtn.first().click();
     const modal = new ChangeMpesaModalPage(page);
@@ -178,8 +152,6 @@ test.describe('Settings Modal', () => {
 
   test('Change M-Pesa password field has show/hide toggle', async ({ page }) => {
     const s = new SettingsModalPage(page);
-    const visible = await page.locator('nav button').filter({ hasText: '⚙️' }).isVisible().catch(() => false);
-    if (!visible) test.skip();
     await s.open();
     await s.changeMpesaBtn.first().click();
     const modal = new ChangeMpesaModalPage(page);
@@ -193,8 +165,6 @@ test.describe('Settings Modal', () => {
 
   test('Change M-Pesa submit is disabled when password is empty', async ({ page }) => {
     const s = new SettingsModalPage(page);
-    const visible = await page.locator('nav button').filter({ hasText: '⚙️' }).isVisible().catch(() => false);
-    if (!visible) test.skip();
     await s.open();
     await s.changeMpesaBtn.first().click();
     const modal = new ChangeMpesaModalPage(page);

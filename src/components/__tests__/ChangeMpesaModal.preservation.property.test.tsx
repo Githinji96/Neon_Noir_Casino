@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import * as fc from 'fast-check';
 import React from 'react';
 
@@ -52,7 +52,8 @@ vi.mock('framer-motion', () => ({
     div: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement> & { children?: React.ReactNode }) =>
       React.createElement('div', props, children),
   },
-  AnimatePresence: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
+  AnimatePresence: ({ children }: { children: React.ReactNode }) =>
+    React.createElement(React.Fragment, null, children),
 }));
 
 // ─── Import component after mocks ─────────────────────────────────────────
@@ -67,8 +68,8 @@ import ChangeMpesaModal from '../ChangeMpesaModal';
  */
 const kenyanLocalDigitsArb = fc
   .tuple(
-    fc.constantFrom('7', '1'),       // network prefix
-    fc.stringMatching(/^\d{8}$/),    // 8 remaining digits
+    fc.constantFrom('7', '1'),
+    fc.stringMatching(/^\d{8}$/),
   )
   .map(([prefix, rest]) => prefix + rest);
 
@@ -92,40 +93,32 @@ describe('Property 2 – Preservation: ChangeMpesaModal same-number guard is unc
 
           const currentPhoneNormalized = '254' + localDigits;
 
-          // Profile has an existing phone number
           mockUseAuthStore.mockReturnValue({
             user: { id: 'user-1', email: 'user@test.com' },
             profile: { phone: currentPhoneNormalized },
           });
-
-          // Also stub setState since ChangeMpesaModal uses it on success
           (mockUseAuthStore as unknown as { setState: ReturnType<typeof vi.fn> }).setState = vi.fn();
 
           const onClose = vi.fn();
           const onSuccess = vi.fn();
 
           const { unmount } = render(
-            React.createElement(ChangeMpesaModal, {
-              isOpen: true,
-              onClose,
-              onSuccess,
-            }),
+            React.createElement(ChangeMpesaModal, { isOpen: true, onClose, onSuccess }),
           );
 
-          // Fill in the same number (local digits only, the modal prepends +254)
-          const newPhoneInput = screen.getAllByPlaceholderText('712 345 678')[0];
-          const confirmPhoneInput = screen.getAllByPlaceholderText('712 345 678')[1];
+          const [newPhoneInput, confirmPhoneInput] = screen.getAllByPlaceholderText('712 345 678');
           const passwordInput = screen.getByPlaceholderText('Enter your password to confirm');
 
-          fireEvent.change(newPhoneInput, { target: { value: localDigits } });
-          fireEvent.change(confirmPhoneInput, { target: { value: localDigits } });
-          fireEvent.change(passwordInput, { target: { value: 'SomeP@ss1' } });
+          await act(async () => {
+            fireEvent.change(newPhoneInput,     { target: { value: localDigits } });
+            fireEvent.change(confirmPhoneInput, { target: { value: localDigits } });
+            fireEvent.change(passwordInput,     { target: { value: 'SomeP@ss1' } });
+          });
 
-          // Submit the form
-          const submitBtn = screen.getByText('UPDATE NUMBER');
-          fireEvent.click(submitBtn);
+          await act(async () => {
+            fireEvent.click(screen.getByText('UPDATE NUMBER'));
+          });
 
-          // Wait for error message to appear
           await waitFor(() => {
             const alert = screen.queryByRole('alert');
             expect(alert).not.toBeNull();
@@ -142,7 +135,6 @@ describe('Property 2 – Preservation: ChangeMpesaModal same-number guard is unc
   /**
    * Property 2d: When currentPhone is empty (first-time add), the guard
    * does NOT fire and the form proceeds past client-side validation.
-   * (Confirms the guard fix in 3.3 only skips the guard for empty phones.)
    */
   it('does NOT show "must be different" error when adding a phone for the first time (currentPhone is empty)', async () => {
     await fc.assert(
@@ -151,39 +143,39 @@ describe('Property 2 – Preservation: ChangeMpesaModal same-number guard is unc
         async (localDigits) => {
           vi.clearAllMocks();
 
-          // Profile has NO phone (first-time add scenario)
           mockUseAuthStore.mockReturnValue({
             user: { id: 'user-1', email: 'user@test.com' },
             profile: { phone: null },
           });
           (mockUseAuthStore as unknown as { setState: ReturnType<typeof vi.fn> }).setState = vi.fn();
 
-          const onClose = vi.fn();
-          const onSuccess = vi.fn();
-
           const { unmount } = render(
             React.createElement(ChangeMpesaModal, {
               isOpen: true,
-              onClose,
-              onSuccess,
+              onClose: vi.fn(),
+              onSuccess: vi.fn(),
             }),
           );
 
-          const newPhoneInput = screen.getAllByPlaceholderText('712 345 678')[0];
-          const confirmPhoneInput = screen.getAllByPlaceholderText('712 345 678')[1];
+          const [newPhoneInput, confirmPhoneInput] = screen.getAllByPlaceholderText('712 345 678');
           const passwordInput = screen.getByPlaceholderText('Enter your password to confirm');
 
-          fireEvent.change(newPhoneInput, { target: { value: localDigits } });
-          fireEvent.change(confirmPhoneInput, { target: { value: localDigits } });
-          fireEvent.change(passwordInput, { target: { value: 'SomeP@ss1' } });
+          await act(async () => {
+            fireEvent.change(newPhoneInput,     { target: { value: localDigits } });
+            fireEvent.change(confirmPhoneInput, { target: { value: localDigits } });
+            fireEvent.change(passwordInput,     { target: { value: 'SomeP@ss1' } });
+          });
 
-          const submitBtn = screen.getByText('UPDATE NUMBER');
-          fireEvent.click(submitBtn);
+          await act(async () => {
+            fireEvent.click(screen.getByText('UPDATE NUMBER'));
+          });
+
+          // Allow async state updates from the supabase calls to settle
+          await act(async () => {
+            await new Promise((r) => setTimeout(r, 50));
+          });
 
           // The "must be different" error must NOT appear
-          // (form may call supabase, but the guard error itself must be absent)
-          await new Promise((r) => setTimeout(r, 100));
-
           const alert = screen.queryByRole('alert');
           if (alert) {
             expect(alert.textContent).not.toContain('must be different from the current one');

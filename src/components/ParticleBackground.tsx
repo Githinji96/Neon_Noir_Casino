@@ -44,8 +44,10 @@ export default function ParticleBackground() {
     let animationId: number;
 
     const resize = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
+      // Use clientWidth/clientHeight (excludes scrollbar) so the canvas
+      // never exceeds the visible viewport and triggers horizontal overflow.
+      canvas.width  = document.documentElement.clientWidth;
+      canvas.height = document.documentElement.clientHeight;
     };
 
     resize();

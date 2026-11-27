@@ -20,7 +20,7 @@ This plan follows the exploratory bugfix methodology for the `empty-phone-number
 
 ## Tasks
 
-- [ ] 1. Write bug condition exploration test
+- [x] 1. Write bug condition exploration test
   - **Property 1: Bug Condition** - AuthModal Signup Calls signUp Without Phone
   - **CRITICAL**: This test MUST FAIL on unfixed code — failure confirms the bug exists
   - **DO NOT attempt to fix the test or the code when it fails**
@@ -37,7 +37,7 @@ This plan follows the exploratory bugfix methodology for the `empty-phone-number
   - Mark task complete when test is written, run, and failure is documented
   - _Requirements: 1.1, 1.2_
 
-- [ ] 2. Write preservation property tests (BEFORE implementing fix)
+- [x] 2. Write preservation property tests (BEFORE implementing fix)
   - **Property 2: Preservation** - Non-Signup-Modal Paths Are Unchanged
   - **IMPORTANT**: Follow observation-first methodology
   - **Observation step 1 — AuthModal signin**: Mount `AuthModal` in `signin` mode, fill email/password, submit on UNFIXED code → observe `signIn()` is called with the correct args and `onClose()` fires on success
@@ -110,7 +110,7 @@ This plan follows the exploratory bugfix methodology for the `empty-phone-number
     - **EXPECTED OUTCOME**: All tests PASS (confirms no regressions — signin via `AuthModal`, `SignUpPage` registration, `ChangeMpesaModal` same-number guard for existing phones, and `refreshBalance` backfill are all unaffected)
     - Confirm every preservation scenario still behaves identically to the unfixed code
 
-- [ ] 4. Checkpoint — Ensure all tests pass
+- [x] 4. Checkpoint — Ensure all tests pass
   - Run the full test suite and confirm every test (exploration + preservation) is green
   - Manually smoke-test the end-to-end flows in the browser:
     - Click "Sign Up" on the homepage → confirm redirect to `/auth/signup`

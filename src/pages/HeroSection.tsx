@@ -22,11 +22,11 @@ export default function HeroSection({ onPlayNow }: HeroSectionProps) {
 
   return (
     <section
-      className="relative w-full flex items-center justify-center overflow-hidden py-12 md:py-16"
-      style={{ minHeight: 'clamp(320px, 45vh, 600px)' }}
+      className="relative w-full flex items-center justify-center overflow-hidden py-8 md:py-10"
+      style={{ minHeight: 'clamp(240px, 34vh, 450px)' }}
     >
-      {/* Background gradient */}
-      <div className="absolute inset-0 bg-gradient-to-b from-purple-950/90 via-black/80 to-black" />
+      {/* Background gradient — clipped to section bounds */}
+      <div className="absolute inset-0 bg-gradient-to-b from-purple-950/90 via-black/80 to-black" style={{ right: 0, left: 0 }} />
 
       {/* Cyberpunk grid overlay */}
       <div

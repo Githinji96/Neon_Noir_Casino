@@ -292,6 +292,14 @@ test.describe('Player Registration', () => {
     };
 
     // ── 1. Navigate ────────────────────────────────────────────────────────────
+    // Clear any existing auth session first. A pre-existing Supabase session in
+    // localStorage causes supabase.auth.signUp() to throw instead of returning
+    // { error }, which the app's catch block converts to the generic
+    // "We could not create your account" fallback message.
+    await page.context().clearCookies();
+    await page.evaluate(() => {
+      try { localStorage.clear(); sessionStorage.clear(); } catch { /* ignore */ }
+    });
     await page.goto('/auth/signup');
     await waitForPageReady(page);
 

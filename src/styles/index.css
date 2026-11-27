@@ -45,6 +45,10 @@
 
 html {
   scroll-behavior: smooth;
+  /* Clip horizontal overflow at the true viewport root */
+  overflow-x: clip;
+  scrollbar-width: thin;
+  scrollbar-color: #8b00ff rgba(255, 255, 255, 0.05);
 }
 
 body {
@@ -54,14 +58,16 @@ body {
   background-color: var(--color-bg-primary);
   color: #e2e8f0;
   min-height: 100vh;
+  /* Do NOT set overflow-x here — let html handle it.
+     Setting overflow on body creates a second scroll container. */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  overflow-x: hidden;
 }
 
 #root {
   min-height: 100vh;
   background: linear-gradient(135deg, #0a0a0f 0%, #12082a 50%, #0d0d1a 100%);
+  /* No overflow rules here — avoids creating a third scroll container */
 }
 
 /* ── Utility Classes ── */
@@ -166,24 +172,51 @@ body {
   }
 }
 
-/* ── Scrollbar Styling ── */
-::-webkit-scrollbar {
+/* ── Scrollbar Styling — scoped to html/body only ── */
+/* Applying ::-webkit-scrollbar globally styles every overflow container.
+   Scoping to html and body ensures only the page scrollbar is styled. */
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
   width: 6px;
-  height: 6px;
 }
 
-::-webkit-scrollbar-track {
-  background: var(--color-bg-secondary);
+html::-webkit-scrollbar-track,
+body::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
 }
 
-::-webkit-scrollbar-thumb {
-  background: var(--color-electric-purple);
-  border-radius: 3px;
+html::-webkit-scrollbar-thumb,
+body::-webkit-scrollbar-thumb {
+  background: #8b00ff;
+  border-radius: 4px;
+  box-shadow: 0 0 6px rgba(139, 0, 255, 0.8);
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: var(--color-neon-yellow);
+html::-webkit-scrollbar-thumb:hover,
+body::-webkit-scrollbar-thumb:hover {
+  background: #FFD700;
+  box-shadow: 0 0 10px rgba(255, 215, 0, 0.9);
 }
+
+/* ── Admin sidebar — thin subtle scrollbar (Chromium) ── */
+/* The sidebar has overflow-y: auto; Chromium would use a wide default scrollbar.
+   This overrides it to a 2px barely-visible line. */
+aside::-webkit-scrollbar {
+  width: 2px;
+}
+aside::-webkit-scrollbar-track {
+  background: transparent;
+}
+aside::-webkit-scrollbar-thumb {
+  background: rgba(139, 0, 255, 0.5);
+  border-radius: 2px;
+}
+aside::-webkit-scrollbar-thumb:hover {
+  background: rgba(139, 0, 255, 0.9);
+}
+
+/* Firefox — already set on html element above */
 
 /* ── Light Theme ── */
 .theme-light {
@@ -273,6 +306,16 @@ body {
 .tabs-scroll-strip::-webkit-scrollbar-thumb {
   background: rgba(255, 68, 102, 0.6);
   border-radius: 2px;
+}
+
+/* ── Hide number input spin arrows for mini game bet field ── */
+input[type=number].no-spinner::-webkit-outer-spin-button,
+input[type=number].no-spinner::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type=number].no-spinner {
+  -moz-appearance: textfield;
 }
 
 /* ── Autofill override — prevent Chrome/Edge/Safari from turning inputs white ── */

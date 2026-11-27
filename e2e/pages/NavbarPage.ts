@@ -66,8 +66,9 @@ export class NavbarPage {
     // Bell — aria-label contains "Notifications"
     this.notificationBell = page.getByRole('button', { name: /notifications/i });
 
-    // Settings — ⚙️ button (desktop)
-    this.settingsBtn = page.locator('nav button').filter({ hasText: '⚙️' });
+    // Settings — ⚙️ button (desktop). Two ⚙️ buttons exist in the DOM
+    // (desktop + lg:hidden mobile clone) — .first() targets the desktop one.
+    this.settingsBtn = page.locator('nav button').filter({ hasText: '⚙️' }).first();
 
     // Hamburger — aria-label="Menu"
     this.hamburger    = page.getByRole('button', { name: /^menu$/i });

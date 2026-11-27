@@ -256,7 +256,7 @@ export const jackpotEngine = {
     type?: string;
     base_amount: number;
     contribution_rate: number;
-    trigger_probability: number;
+    trigger_probability?: number; // omitted from player-facing queries — uses hardcoded fallback
   }>): void {
     for (const row of rows) {
       const existing = JACKPOT_CONFIGS.find((c) => c.id === row.id);
@@ -267,7 +267,11 @@ export const jackpotEngine = {
         existing.seedAmount       = row.base_amount;
         existing.baseAmount       = row.base_amount;
         existing.contributionRate = row.contribution_rate;
-        existing.baseProbability  = row.trigger_probability;
+        // Only update trigger probability if explicitly provided (admin query).
+        // Player-facing syncs omit this field to avoid browser devtools exposure.
+        if (row.trigger_probability != null) {
+          existing.baseProbability = row.trigger_probability;
+        }
       } else {
         // New jackpot found in DB that isn't in the hardcoded list — register it
         const newCfg = buildConfigFromDB(row);

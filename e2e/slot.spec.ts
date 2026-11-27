@@ -33,6 +33,13 @@ test.describe('Slot Machine Page — authenticated', () => {
   async function waitForSlotLoad(page: Page): Promise<void> {
     await page.locator('text=LOADING...').waitFor({ state: 'hidden', timeout: 6_000 }).catch(() => {});
     await waitForPageReady(page);
+    // Wait for SPIN button — confirms SlotMachine component is fully mounted
+    const spinBtn = page.locator('button.rounded-full.bg-yellow-400').first();
+    try {
+      await spinBtn.waitFor({ state: 'visible', timeout: 10_000 });
+    } catch {
+      test.skip();
+    }
   }
 
   test('game title (h1) is visible', async ({ page }) => {

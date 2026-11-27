@@ -11,7 +11,26 @@ export default function SpinControls() {
   const [volume, setVolume] = useState(() => getMusicVolume());
   const popupRef = useRef<HTMLDivElement>(null);
 
+  // Ref-based guard prevents double-click from firing two spins before
+  // React re-renders with isSpinning=true (Framer Motion can buffer clicks
+  // during the animation frame gap between click and state update).
+  const spinFiredRef = useRef(false);
+
   const isDisabled = isSpinning || balance <= 0 || balance < bet;
+
+  function handleSpin() {
+    if (isDisabled) return;
+    if (spinFiredRef.current) return; // double-click guard
+    spinFiredRef.current = true;
+    spin();
+    // Reset after a short delay — long enough to cover the React render cycle
+    setTimeout(() => { spinFiredRef.current = false; }, 300);
+  }
+
+  // Also reset the ref whenever isSpinning changes back to false
+  useEffect(() => {
+    if (!isSpinning) spinFiredRef.current = false;
+  }, [isSpinning]);
 
   // Stable animate objects — defined outside render so framer-motion doesn't
   // restart the glow animation on every balance/state re-render.
@@ -53,8 +72,9 @@ export default function SpinControls() {
     <div className="flex flex-col items-center shrink-0">
       {/* SPIN button — scales with viewport, min 72px on tiny screens */}
       <motion.button
-        onClick={spin}
+        onClick={handleSpin}
         disabled={isDisabled}
+        aria-label="SPIN"
         animate={isDisabled ? disabledAnimate : glowAnimate}
         transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
         className={`rounded-full bg-yellow-400 text-black font-orbitron font-bold transition-opacity

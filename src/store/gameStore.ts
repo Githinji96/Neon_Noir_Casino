@@ -102,6 +102,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     // Disable the button IMMEDIATELY before any computation so the UI responds
     // to the click right away instead of waiting for all the sync work below.
+    // Also guard against any double-call within the same event loop tick.
     set({ isSpinning: true });
 
     const isFreeSpins = state.freeSpinsRemaining > 0;

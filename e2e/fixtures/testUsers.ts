@@ -10,4 +10,4 @@ export const TEST_PLAYER = {
 };
 
 /** Minimum balance the test player must have to run betting tests. */
-export const MINIMUM_TEST_BALANCE = 200;
+export const MINIMUM_TEST_BALANCE = 50;

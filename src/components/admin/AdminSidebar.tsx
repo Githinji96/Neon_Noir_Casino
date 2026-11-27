@@ -71,7 +71,7 @@ export default function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
   return (
     <>
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex flex-col w-56 bg-[#0a0a0f] border-r border-white/10 fixed left-0 top-0 h-screen z-20 overflow-y-auto">
+      <aside className="hidden md:flex flex-col w-56 bg-[#0a0a0f] border-r border-white/10 fixed left-0 top-0 h-screen z-20 overflow-y-auto scrollbar-thin" style={{ scrollbarColor: 'rgba(139,0,255,0.5) transparent', scrollbarWidth: 'thin' }}>
         {sidebarContent}
       </aside>
 
@@ -82,7 +82,7 @@ export default function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={onClose}
           />
-          <aside className="relative z-50 w-56 bg-[#0a0a0f] border-r border-white/10 h-full overflow-y-auto">
+          <aside className="relative z-50 w-56 bg-[#0a0a0f] border-r border-white/10 h-full overflow-y-auto scrollbar-thin" style={{ scrollbarColor: 'rgba(139,0,255,0.5) transparent', scrollbarWidth: 'thin' }}>
             {sidebarContent}
           </aside>
         </div>

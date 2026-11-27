@@ -30,6 +30,10 @@ playwright-report/
 blob-report/
 playwright/.cache/
 
+# Playwright auth state — contains session tokens, must never be committed
+e2e/.auth/
+e2e/.auth/*.json
+
 # =========================
 # Screenshots / Videos / Traces
 # =========================
