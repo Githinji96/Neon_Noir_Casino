@@ -1,7 +1,6 @@
 
 name: E2E Tests (Playwright)
 
-# Manually triggered from GitHub Actions
 on:
   workflow_dispatch:
     inputs:
@@ -14,15 +13,32 @@ on:
           - main
         default: dev
 
-      spec:
-        description: 'Spec file to run (leave blank to run all)'
-        required: false
-        type: string
-        default: ''
+      suite:
+        description: 'Select All Suites or an individual test suite'
+        required: true
+        type: choice
+        options:
+          - all
+          - registration.spec.ts
+          - footer-legal.spec.ts
+          - home.spec.ts
+          - jackpots.spec.ts
+          - navigation.spec.ts
+          - responsiveness.spec.ts
+          - vip.spec.ts
+          - accessibility.spec.ts
+          - auth.spec.ts
+          - deposit-withdraw.spec.ts
+          - notifications.spec.ts
+          - settings.spec.ts
+          - slot-betting.spec.ts
+          - slot.spec.ts
+          - liveTables.spec.ts
+        default: all
 
       project:
-        description: 'Playwright project (desktop | chromium-auth | live-tables | all)'
-        required: false
+        description: 'Select Playwright project'
+        required: true
         type: choice
         options:
           - all
@@ -53,9 +69,11 @@ jobs:
         with:
           ref: ${{ inputs.branch }}
 
-      - name: Display selected branch
+      - name: Display test configuration
         run: |
-          echo "Running Playwright tests on branch: ${{ inputs.branch }}"
+          echo "Branch: ${{ inputs.branch }}"
+          echo "Suite: ${{ inputs.suite }}"
+          echo "Project: ${{ inputs.project }}"
           git branch --show-current
 
       - name: Setup Node
@@ -84,18 +102,29 @@ jobs:
 
       - name: Run Playwright tests
         env:
-          SPEC: ${{ inputs.spec }}
+          SUITE: ${{ inputs.suite }}
           PROJECT: ${{ inputs.project }}
         run: |
           ARGS=()
 
-          if [ -n "$SPEC" ]; then
-            ARGS+=("$SPEC")
+          # Select all suites or one individual suite
+          if [ "$SUITE" != "all" ]; then
+            if ! find . -type f -name "$SUITE" \
+              -not -path "./node_modules/*" \
+              -not -path "./.git/*" | grep -q .; then
+              echo "ERROR: $SUITE was not found."
+              exit 1
+            fi
+
+            ARGS+=("$SUITE")
           fi
 
+          # Select Playwright project
           if [ "$PROJECT" != "all" ]; then
             ARGS+=("--project=$PROJECT")
           fi
+
+          echo "Running: npx playwright test ${ARGS[*]}"
 
           npx playwright test "${ARGS[@]}"
 
@@ -103,6 +132,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: playwright-report-${{ inputs.branch }}
+          name: playwright-report-${{ inputs.branch }}-${{ inputs.suite }}
           path: playwright-report/
           retention-days: 14
+          if-no-files-found: ignore
