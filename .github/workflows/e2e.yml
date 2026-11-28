@@ -1,6 +1,7 @@
 
 name: E2E Tests (Playwright)
 
+# Manually triggered from GitHub Actions
 on:
   workflow_dispatch:
     inputs:
@@ -37,14 +38,16 @@ on:
         default: all
 
       project:
-        description: 'Select Playwright project'
+        description: 'Select Playwright project/device'
         required: true
         type: choice
         options:
           - all
-          - desktop
           - chromium-auth
-          - live-tables
+          - desktop
+          - laptop
+          - tablet
+          - mobile
         default: all
 
 jobs:
@@ -53,41 +56,55 @@ jobs:
     timeout-minutes: 80
 
     env:
+      # Supabase configuration
       VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
       VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
+      # Test credentials
       TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
       TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
 
+      # Playwright configuration
       BROWSER_CHANNEL: ''
       BASE_URL: 'http://localhost:4173'
       CI: 'true'
 
     steps:
+      # Checkout selected branch
       - name: Checkout selected branch
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.branch }}
 
+      # Display execution configuration
       - name: Display test configuration
         run: |
+          echo "=================================="
+          echo "PLAYWRIGHT E2E TEST EXECUTION"
+          echo "=================================="
           echo "Branch: ${{ inputs.branch }}"
           echo "Suite: ${{ inputs.suite }}"
           echo "Project: ${{ inputs.project }}"
+          echo "=================================="
           git branch --show-current
+          git log -1 --oneline
 
+      # Setup Node
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
 
+      # Install dependencies
       - name: Install dependencies
         run: npm ci
 
+      # Build application
       - name: Build app for preview
         run: npm run build
 
+      # Verify Supabase configuration
       - name: Verify built app contains Supabase config
         run: |
           if grep -r "supabase.co" dist/ --include="*.js" -l | head -1 > /dev/null 2>&1; then
@@ -97,9 +114,11 @@ jobs:
             echo "Check VITE_SUPABASE_URL secret."
           fi
 
+      # Install Chromium
       - name: Install Playwright browsers
         run: npx playwright install chromium --with-deps
 
+      # Execute selected test suite and project
       - name: Run Playwright tests
         env:
           SUITE: ${{ inputs.suite }}
@@ -109,30 +128,41 @@ jobs:
 
           # Select all suites or one individual suite
           if [ "$SUITE" != "all" ]; then
-            if ! find . -type f -name "$SUITE" \
+
+            SPEC_PATH=$(find . -type f -name "$SUITE" \
               -not -path "./node_modules/*" \
-              -not -path "./.git/*" | grep -q .; then
-              echo "ERROR: $SUITE was not found."
+              -not -path "./.git/*" \
+              | head -n 1)
+
+            if [ -z "$SPEC_PATH" ]; then
+              echo "ERROR: Test suite $SUITE was not found."
               exit 1
             fi
 
-            ARGS+=("$SUITE")
+            ARGS+=("$SPEC_PATH")
           fi
 
-          # Select Playwright project
+          # Select all projects or one individual project
           if [ "$PROJECT" != "all" ]; then
             ARGS+=("--project=$PROJECT")
           fi
 
-          echo "Running: npx playwright test ${ARGS[*]}"
+          echo "=================================="
+          echo "EXECUTING PLAYWRIGHT TESTS"
+          echo "Suite: $SUITE"
+          echo "Project: $PROJECT"
+          echo "=================================="
 
           npx playwright test "${ARGS[@]}"
 
+      # Upload reports even when tests fail
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: playwright-report-${{ inputs.branch }}-${{ inputs.suite }}
-          path: playwright-report/
+          name: playwright-report-${{ inputs.branch }}-${{ inputs.suite }}-${{ inputs.project }}
+          path: |
+            playwright-report/
+            test-results/
           retention-days: 14
           if-no-files-found: ignore
