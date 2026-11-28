@@ -9,36 +9,25 @@
  * Run all tests:         npm run test:e2e
  * Interactive UI mode:   npm run test:e2e:ui
  * Single spec:           npx playwright test e2e/home.spec.ts
- * Authenticated only:    npx playwright test --project=chromium-auth
+ * By project:            npx playwright test --project=chromium-auth
  *
- * Browser: uses system-installed Microsoft Edge (msedge) so no Playwright
- * browser download is required.  Switch to 'chrome' if Chrome is installed,
- * or remove `channel` and run `npx playwright install chromium` for the
- * bundled Chromium.
+ * Projects:
+ *   desktop, laptop, tablet, mobile  — viewport variants, all specs, authenticated
+ *   chromium-auth                    — desktop viewport, all specs, authenticated
+ *   live-tables                      — liveTables.spec.ts only, 60s timeout
+ *   registration                     — registration.spec.ts only, no auth state
  */
 
 const BASE_URL   = process.env.BASE_URL   ?? 'http://localhost:5173';
 const AUTH_STATE = 'e2e/.auth/auth-state.json';
 
-// In CI: BROWSER_CHANNEL is set to '' → Playwright uses bundled Chromium.
-// Locally: defaults to 'msedge' (or 'chrome' if you prefer).
 const BROWSER_CHANNEL = process.env.BROWSER_CHANNEL ?? 'msedge';
-// When channel is empty string, pass undefined so Playwright uses bundled browser
 const resolvedChannel = BROWSER_CHANNEL || undefined;
 
-/** Specs that are ONLY run under their dedicated projects.
- *  Excluding these from the viewport projects prevents them running 4× redundantly
- *  and avoids skip-spam when auth-sensitive tests can't load on those viewports. */
-const AUTH_ONLY_SPECS = [
-  '**/liveTables.spec.ts',      // runs under live-tables project
-  '**/slot-betting.spec.ts',    // runs under chromium-auth project
-  '**/slot.spec.ts',            // runs under chromium-auth project
-  '**/deposit-withdraw.spec.ts',// runs under chromium-auth project
-  '**/notifications.spec.ts',   // runs under chromium-auth project
-  '**/settings.spec.ts',        // runs under chromium-auth project
-  '**/auth.spec.ts',            // runs under chromium-auth project
-  '**/accessibility.spec.ts',   // runs under chromium-auth project (requires ⚙️ auth-gated UI)
-  '**/registration.spec.ts',    // runs under registration project (needs NO auth state)
+/** Specs with their own dedicated projects — excluded from the 5 standard projects. */
+const DEDICATED_SPECS = [
+  '**/liveTables.spec.ts',   // live-tables project (60s timeout)
+  '**/registration.spec.ts', // registration project (no auth state)
 ];
 
 export default defineConfig({
@@ -64,10 +53,7 @@ export default defineConfig({
     ignoreHTTPSErrors: true,
     viewport: { width: 1440, height: 900 },
     channel: resolvedChannel,
-    // All projects share the same saved auth state so every test runs authenticated.
-    // globalSetup saves this file before any tests run.
     storageState: AUTH_STATE,
-    // Disable GPU acceleration to prevent Edge GPU process crashes on Windows.
     launchOptions: {
       args: ['--disable-gpu', '--disable-gpu-compositing'],
     },
@@ -78,24 +64,24 @@ export default defineConfig({
     {
       name: 'desktop',
       use: { channel: resolvedChannel, viewport: { width: 1440, height: 900 } },
-      testIgnore: AUTH_ONLY_SPECS,
+      testIgnore: DEDICATED_SPECS,
     },
 
-    /* ── Laptop (1366×768) ───────────────────────────────────────── */
+    /* ── Laptop (1366×768) ────────────────────────────────────────── */
     {
       name: 'laptop',
       use: { channel: resolvedChannel, viewport: { width: 1366, height: 768 } },
-      testIgnore: AUTH_ONLY_SPECS,
+      testIgnore: DEDICATED_SPECS,
     },
 
-    /* ── Tablet (768×1024) ───────────────────────────────────────── */
+    /* ── Tablet (768×1024) ────────────────────────────────────────── */
     {
       name: 'tablet',
       use: { channel: resolvedChannel, viewport: { width: 768, height: 1024 } },
-      testIgnore: AUTH_ONLY_SPECS,
+      testIgnore: DEDICATED_SPECS,
     },
 
-    /* ── Mobile (390×844) ────────────────────────────────────────── */
+    /* ── Mobile (390×844) ─────────────────────────────────────────── */
     {
       name: 'mobile',
       use: {
@@ -107,10 +93,10 @@ export default defineConfig({
         hasTouch: true,
         isMobile: true,
       },
-      testIgnore: AUTH_ONLY_SPECS,
+      testIgnore: DEDICATED_SPECS,
     },
 
-    /* ── chromium-auth — auth-specific spec files ─────────────────── */
+    /* ── chromium-auth (1440×900, authenticated) ──────────────────── */
     {
       name: 'chromium-auth',
       use: {
@@ -118,18 +104,10 @@ export default defineConfig({
         viewport: { width: 1440, height: 900 },
         storageState: AUTH_STATE,
       },
-      testMatch: [
-        '**/slot.spec.ts',
-        '**/slot-betting.spec.ts',
-        '**/deposit-withdraw.spec.ts',
-        '**/notifications.spec.ts',
-        '**/settings.spec.ts',
-        '**/auth.spec.ts',
-        '**/accessibility.spec.ts',
-      ],
+      testIgnore: DEDICATED_SPECS,
     },
 
-    /* ── Live Tables — desktop only, higher timeout for bet flows ── */
+    /* ── Live Tables — dedicated, 60s timeout ─────────────────────── */
     {
       name: 'live-tables',
       use: {
@@ -141,16 +119,12 @@ export default defineConfig({
       timeout: 60_000,
     },
 
-    /* ── Registration — runs with NO auth state so signUp starts clean ── */
+    /* ── Registration — dedicated, no auth state ──────────────────── */
     {
       name: 'registration',
       use: {
         channel: resolvedChannel,
         viewport: { width: 1440, height: 900 },
-        // Explicitly no storageState — a pre-existing Supabase session in
-        // localStorage causes supabase.auth.signUp() to throw instead of
-        // returning { error }, which the signUp() catch block converts to
-        // the generic "We could not create your account" fallback message.
         storageState: { cookies: [], origins: [] },
       },
       testMatch: ['**/registration.spec.ts'],

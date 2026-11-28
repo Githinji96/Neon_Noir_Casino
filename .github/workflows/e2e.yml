@@ -21,14 +21,18 @@ on:
         default: ''
 
       project:
-        description: 'Playwright project (desktop | chromium-auth | live-tables | all)'
+        description: 'Playwright project (desktop | laptop | tablet | mobile | chromium-auth | live-tables | registration | all)'
         required: false
         type: choice
         options:
           - all
           - desktop
+          - laptop
+          - tablet
+          - mobile
           - chromium-auth
           - live-tables
+          - registration
         default: all
 
 jobs:
